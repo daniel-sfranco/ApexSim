@@ -18,18 +18,18 @@ Rodar com:
     pytest test_simulation_engine.py -v
 """
 
-import pytest
+from dataclasses import FrozenInstanceError
 
+import pytest
 from state import (
-    RaceState,
     DriverState,
     LapResult,
-    TyreCompound,
     PitStatus,
+    RaceState,
     TrackStatus,
+    TyreCompound,
     tick,
 )
-
 
 # ---------------------------------------------------------------------------
 # FIXTURES / HELPERS
@@ -213,8 +213,9 @@ def test_lap_result_e_imutavel(race_state: RaceState):
         fuel_load=108.5,
         pit_stop=False,
     )
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         resultado.lap_time = 91.0  # type: ignore[misc]
+
 
 
 # ---------------------------------------------------------------------------

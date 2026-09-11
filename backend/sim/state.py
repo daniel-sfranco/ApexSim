@@ -11,10 +11,9 @@ interface (quais dados existem, quais tipos têm, o que tick() recebe e
 devolve) antes de implementar as regras de física/estratégia.
 """
 
+import random
 from dataclasses import dataclass, field
 from enum import Enum, auto
-import random
-from typing import Optional, List, Dict
 
 random.seed(42)
 
@@ -97,12 +96,12 @@ class LapResult:
     lap_time: float
     position: int
     gap_to_leader: float
-    gap_to_ahead: Optional[float]
+    gap_to_ahead: float | None
     tyre_compound: TyreCompound
     tyre_age: int
     fuel_load: float
     pit_stop: bool
-    pit_time: Optional[float] = None
+    pit_time: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -141,9 +140,9 @@ class DriverState:
     team: str
     position: int
     current_lap: int
-    last_lap_time: Optional[float]
+    last_lap_time: float | None
     gap_to_leader: float
-    gap_to_ahead: Optional[float]
+    gap_to_ahead: float | None
     tyre_compound: TyreCompound
     tyre_age: int
     fuel_load: float
@@ -185,8 +184,8 @@ class RaceState:
     current_lap: int
     total_laps: int
     track_status: TrackStatus
-    drivers: Dict[str, DriverState]
-    lap_history: List[LapResult] = field(default_factory=list)
+    drivers: dict[str, DriverState]
+    lap_history: list[LapResult] = field(default_factory=list)
     elapsed_time: float = 0.0
     is_finished: bool = False
     rng = random.random()  # Gerador de números aleatórios para eventos estocásticos
@@ -228,19 +227,42 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
     for driver in state.drivers.values():
         # Simulação simplificada: cada piloto completa uma volta em base_lap_time
         driver.current_lap += 1
-        driver.last_lap_time = driver.base_lap_time + random.gauss(0, 1.0)  # Adiciona variação aleatória
+        # Adiciona variação aleatória.
+        driver.last_lap_time = driver.base_lap_time + random.gauss(0, 1.0)
         driver.total_race_time += driver.last_lap_time
     for driver in state.drivers.values():
-        driver.position = sorted(state.drivers.values(), key=lambda d: d.total_race_time).index(driver) + 1
+        sorted_drivers = sorted(
+            state.drivers.values(),
+            key=lambda d: d.total_race_time,
+        )
+        driver.position = sorted_drivers.index(driver) + 1
     for driver in state.drivers.values():
         if driver.position == 1:
             driver.gap_to_leader = 0.0
             driver.gap_to_ahead = None
         else:
             leader_time = next(d.total_race_time for d in state.drivers.values() if d.position == 1)
-            ahead_time = next(d.total_race_time for d in state.drivers.values() if d.position == driver.position - 1)
+            ahead_time = next(
+                d.total_race_time
+                for d in state.drivers.values()
+                if d.position == driver.position - 1
+            )
             driver.gap_to_leader = driver.total_race_time - leader_time
             driver.gap_to_ahead = driver.total_race_time - ahead_time
     state.current_lap += 1
     for driver in state.drivers.values():
-        print(f"Driver {driver.driver_id}: Lap {driver.current_lap}, Last Lap Time {driver.last_lap_time:.2f}s, Total Time {driver.total_race_time:.2f}s, Position {driver.position}, Gap to Leader {driver.gap_to_leader:.2f}s, Gap to Ahead {driver.gap_to_ahead if driver.gap_to_ahead is not None else 'N/A'}s")
+        gap_to_ahead = (
+            driver.gap_to_ahead
+            if driver.gap_to_ahead is not None
+            else "N/A"
+        )
+
+        print(
+            f"Driver {driver.name}: "
+            f"Lap {driver.current_lap}, "
+            f"Lap Time {driver.last_lap_time:.2f}s, "
+            f"Total Time {driver.total_race_time:.2f}s, "
+            f"Position {driver.position}, "
+            f"Gap to Leader {driver.gap_to_leader:.2f}s, "
+            f"Gap to Ahead {gap_to_ahead}s"
+        )
