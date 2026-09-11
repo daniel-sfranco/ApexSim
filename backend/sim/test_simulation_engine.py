@@ -18,18 +18,18 @@ Rodar com:
     pytest test_simulation_engine.py -v
 """
 
-import pytest
+from dataclasses import FrozenInstanceError
 
+import pytest
 from state import (
-    RaceState,
     DriverState,
     LapResult,
-    TyreCompound,
     PitStatus,
+    RaceState,
     TrackStatus,
+    TyreCompound,
     tick,
 )
-
 
 # ---------------------------------------------------------------------------
 # FIXTURES / HELPERS
@@ -117,6 +117,7 @@ def race_state() -> RaceState:
 # TESTES DE ESTRUTURA DA GRID
 # ---------------------------------------------------------------------------
 
+
 def test_grid_tem_exatamente_20_pilotos(race_state: RaceState):
     """A grid deve conter exatamente 20 pilotos, nem mais nem menos."""
     assert len(race_state.drivers) == 20
@@ -170,6 +171,7 @@ def test_corrida_comeca_na_volta_zero_e_nao_finalizada(race_state: RaceState):
 # no futuro), a estrutura de LapResult comporta os 20 registros de uma
 # volta completa, mantendo a ordenação por posição.
 
+
 def test_lap_history_comporta_resultado_de_volta_completa_para_20_pilotos(
     race_state: RaceState,
 ):
@@ -213,7 +215,7 @@ def test_lap_result_e_imutavel(race_state: RaceState):
         fuel_load=108.5,
         pit_stop=False,
     )
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         resultado.lap_time = 91.0  # type: ignore[misc]
 
 
@@ -240,6 +242,7 @@ def test_lap_result_e_imutavel(race_state: RaceState):
 #     assert len(race_state.drivers) == 20
 #     with pytest.raises(NotImplementedError):
 #         tick(race_state, delta_time=1.0)
+
 
 def test_tick_aumenta_numero_de_voltas(race_state: RaceState):
     """Testa o comportamento do tick() para uma volta completa."""
