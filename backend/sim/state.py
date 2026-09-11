@@ -18,7 +18,6 @@ from enum import Enum, auto
 random.seed(42)
 
 
-
 class TyreCompound(Enum):
     """Composto de pneu montado no carro no momento do registro.
 
@@ -26,12 +25,14 @@ class TyreCompound(Enum):
     INTERMEDIATE, WET: compostos de chuva.
     UNKNOWN: caso o composto não seja conhecido (ex.: erro de leitura).
     """
+
     SOFT = auto()
     MEDIUM = auto()
     HARD = auto()
     INTERMEDIATE = auto()
     WET = auto()
     UNKNOWN = auto()
+
 
 class PitStatus(Enum):
     """Situação do piloto em relação ao pit lane no tick atual.
@@ -41,6 +42,7 @@ class PitStatus(Enum):
     IN_PIT: piloto está parado no box (troca de pneu/reparo).
     EXITING: piloto está saindo do pit lane de volta à pista.
     """
+
     NONE = auto()
     ENTERING = auto()
     IN_PIT = auto()
@@ -55,6 +57,7 @@ class TrackStatus(Enum):
     SAFETY_CAR: safety car físico em pista.
     RED: bandeira vermelha (corrida interrompida).
     """
+
     GREEN = auto()
     YELLOW = auto()
     SAFETY_CAR = auto()
@@ -64,6 +67,7 @@ class TrackStatus(Enum):
 # ---------------------------------------------------------------------------
 # LAP RESULT
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class LapResult:
@@ -91,6 +95,7 @@ class LapResult:
         pit_time: Duração da passagem pelo pit lane nesta volta, em
             segundos (None se pit_stop for False).
     """
+
     driver_id: str
     lap_number: int
     lap_time: float
@@ -107,6 +112,7 @@ class LapResult:
 # ---------------------------------------------------------------------------
 # DRIVER STATE
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class DriverState:
@@ -135,6 +141,7 @@ class DriverState:
         is_retired: True se o piloto abandonou a corrida.
         total_race_time: Tempo total acumulado de corrida, em segundos.
     """
+
     driver_id: str
     name: str
     team: str
@@ -156,6 +163,7 @@ class DriverState:
 # ---------------------------------------------------------------------------
 # RACE STATE
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class RaceState:
@@ -181,6 +189,7 @@ class RaceState:
         is_finished: True quando a corrida foi encerrada (todas as
             voltas cumpridas, bandeirada, ou interrompida em definitivo).
     """
+
     current_lap: int
     total_laps: int
     track_status: TrackStatus
@@ -194,6 +203,7 @@ class RaceState:
 # ---------------------------------------------------------------------------
 # CONTRATO DO MOTOR: tick()
 # ---------------------------------------------------------------------------
+
 
 def tick(state: RaceState, delta_time: float) -> RaceState:
     """Avança a simulação em um passo de tempo (ou de volta).
@@ -251,11 +261,7 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
             driver.gap_to_ahead = driver.total_race_time - ahead_time
     state.current_lap += 1
     for driver in state.drivers.values():
-        gap_to_ahead = (
-            driver.gap_to_ahead
-            if driver.gap_to_ahead is not None
-            else "N/A"
-        )
+        gap_to_ahead = driver.gap_to_ahead if driver.gap_to_ahead is not None else "N/A"
 
         print(
             f"Driver {driver.name}: "
