@@ -1,4 +1,4 @@
-.PHONY: up down logs seed test lint fmt clean
+.PHONY: up down logs seed plot test lint fmt clean
 
 up:
 	docker compose up --build -d
@@ -15,6 +15,11 @@ logs:
 # a partir da semana 5 popula também o banco.
 seed:
 	docker compose run --rm api python -m app.pipeline.circuits
+
+# Desenha os circuitos para conferência visual — o critério "o traçado é
+# reconhecível" não se automatiza, alguém precisa olhar.
+plot:
+	docker compose run --rm api python -m app.pipeline.plotar
 
 test:
 	docker compose run --rm api pytest
