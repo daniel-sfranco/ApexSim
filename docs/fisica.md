@@ -48,18 +48,18 @@ t_{lap,tire}(a,c) = t_{tire,quad}(a,c) + t_{cliff}(a,c)
 
 ### 1.3 Faixas de calibração (pós-2022, pneus Pirelli 18")
 
-- Degradação linear média por composto (dados FastF1 2022–2026, regressão por volta): Soft ≈ 0,06–0,09 s/volta; Medium ≈ 0,05–0,065 s/volta; Hard ≈ 0,04–0,055 s/volta. O spread entre compostos variou fortemente por temporada: 0,053 s/volta em 2022, apenas 0,011 s/volta em 2023, 0,043 em 2024, 0,041 em 2025 e 0,008 em 2026 (ano em que a hierarquia se inverteu: o Hard passou a degradar mais rápido, a 0,071 s/volta, contra 0,065 do Medium e 0,063 do Soft)[web:42].
+- Degradação linear média por composto (dados FastF1 2022–2026, regressão por volta): Soft ≈ 0,06–0,09 s/volta; Medium ≈ 0,05–0,065 s/volta; Hard ≈ 0,04–0,055 s/volta. O spread entre compostos variou fortemente por temporada: 0,053 s/volta em 2022, apenas 0,011 s/volta em 2023, 0,043 em 2024, 0,041 em 2025 e 0,008 em 2026 (ano em que a hierarquia se inverteu: o Hard passou a degradar mais rápido, a 0,071 s/volta, contra 0,065 do Medium e 0,063 do Soft)[1].
 - Cliff térmico: em pneus C3–C5 da era de efeito solo, o salto de degradação pode variar de 0,3 a 1,5+ s/volta quando o pneu ultrapassa a janela térmica ótima, tipicamente entre a volta 18–30 dependendo do composto e da abrasividade da pista.
-- Correção de combustível usada como premissa para isolar o termo de pneu: 0,03–0,08 s/kg (ver Seção 2); os resultados de degradação são robustos a essa faixa[web:42].
+- Correção de combustível usada como premissa para isolar o termo de pneu: 0,03–0,08 s/kg (ver Seção 2); os resultados de degradação são robustos a essa faixa[1].
 
 ### 1.4 Referências
 
-- Fieni, G. et al. "Towards Learning-Based Formula 1 Race Strategies" (2025). arXiv:2512.21570 — modelo \(T_{lap} = T_{nom}(\ldots) + \Delta T_j(TW)\) com correção de combustível separada[web:4].
-- "A State-Space Approach to Modeling Tire Degradation in Formula 1 Racing" (2025). arXiv:2512.00640 (stat.AP) — framework bayesiano de espaço de estados usando dados FastF1, com reset de estado em pit stops e degradação específica por composto[web:1].
-- Sulsters et al., "Simulating Formula One Race Strategies" — modelo quadrático de resíduos por composto após remoção do efeito de combustível[web:14].
-- Heilmeier, A. et al. (2020). "Optimal Tyre Management of a Formula One Car" — IFAC 2020, base para \(t_{tire}(a,c) = k_0(c) + k_1(c)\cdot a\)[web:8].
-- F1 Chronicle / Substack — "F1 Tyre Degradation in 2026: The Data Behind the Flipped Hierarchy" (dados agregados de degradação por temporada 2022–2026 a partir de timing oficial)[web:42].
-- Tese de mestrado, Politecnico di Torino — "Probabilistic Simulator for Race Event..." (webthesis.biblio.polito.it/35913) — consolidação dos modelos linear/quadrático e citação de coeficientes McLaren de 0,03 s/kg[web:7].
+- Fieni, G. et al. "Towards Learning-Based Formula 1 Race Strategies" (2025). arXiv:2512.21570 — modelo \(T_{lap} = T_{nom}(\ldots) + \Delta T_j(TW)\) com correção de combustível separada[2].
+- "A State-Space Approach to Modeling Tire Degradation in Formula 1 Racing" (2025). arXiv:2512.00640 (stat.AP) — framework bayesiano de espaço de estados usando dados FastF1, com reset de estado em pit stops e degradação específica por composto[3].
+- Sulsters et al., "Simulating Formula One Race Strategies" — modelo quadrático de resíduos por composto após remoção do efeito de combustível[4].
+- Heilmeier, A. et al. (2020). "Optimal Tyre Management of a Formula One Car" — IFAC 2020, base para \(t_{tire}(a,c) = k_0(c) + k_1(c)\cdot a\)[5].
+- F1 Chronicle / Substack — "F1 Tyre Degradation in 2026: The Data Behind the Flipped Hierarchy" (dados agregados de degradação por temporada 2022–2026 a partir de timing oficial)[1].
+- Tese de mestrado, Politecnico di Torino — "Probabilistic Simulator for Race Event..." (webthesis.biblio.polito.it/35913) — consolidação dos modelos linear/quadrático e citação de coeficientes McLaren de 0,03 s/kg[6].
 
 ---
 
@@ -91,20 +91,20 @@ Equivalente, para a volta \(l\) de uma corrida com \(N\) voltas e queima linear:
 
 ### 2.3 Faixas de calibração
 
-- Sensibilidade \(s_{lap,mass}\): consenso da comunidade de engenharia (McLaren Applied Technologies, F1Metrics, Reddit r/F1Technical) situa-se entre 0,03 e 0,08 s/kg, com valor de referência frequentemente citado de 0,03 s/kg (McLaren) e estimativas independentes de ~0,033–0,035 s/kg (1 kg ≈ 30–35 ms)[web:7][web:43].
-- Combustível máximo regulamentar: 110 kg por corrida desde 2019, mantido no regulamento pós-2022[web:30][web:34].
-- Consumo real de corrida: tipicamente 95–110 kg totais, com equipes "curtas" de 5–15 kg para ganho de peso quando a margem de fluxo (100 kg/h) permite[web:33][web:41].
-- Taxa de queima por volta: aproximadamente 1,5–2,0 kg/volta em corridas de ~57–70 voltas (ex.: 110 kg / 57 voltas ≈ 1,93 kg/volta)[web:39][web:43].
-- Fluxo máximo regulamentar: 100 kg/h (limite técnico da FIA, inalterado na era de efeito solo)[web:33].
+- Sensibilidade \(s_{lap,mass}\): consenso da comunidade de engenharia (McLaren Applied Technologies, F1Metrics, Reddit r/F1Technical) situa-se entre 0,03 e 0,08 s/kg, com valor de referência frequentemente citado de 0,03 s/kg (McLaren) e estimativas independentes de ~0,033–0,035 s/kg (1 kg ≈ 30–35 ms)[6][7].
+- Combustível máximo regulamentar: 110 kg por corrida desde 2019, mantido no regulamento pós-2022[8][9].
+- Consumo real de corrida: tipicamente 95–110 kg totais, com equipes "curtas" de 5–15 kg para ganho de peso quando a margem de fluxo (100 kg/h) permite[10][11].
+- Taxa de queima por volta: aproximadamente 1,5–2,0 kg/volta em corridas de ~57–70 voltas (ex.: 110 kg / 57 voltas ≈ 1,93 kg/volta)[12][7].
+- Fluxo máximo regulamentar: 100 kg/h (limite técnico da FIA, inalterado na era de efeito solo)[10].
 
 ### 2.4 Referências
 
-- Politecnico di Torino, tese de mestrado — formulação de \(t_{fuel}(l)\) atribuída a Heilmeier et al., com coeficiente McLaren de 0,03 s/kg[web:7].
-- Sulsters et al., "Simulating Formula One Race Strategies" — regressão linear \(\tilde{Y}_{it} = \beta_0 + \beta_1 X_{1,it} + e_{it}\) para isolar o efeito de combustível por piloto[web:14].
-- Fieni et al. (2025), arXiv:2512.21570 — separação explícita do termo de combustível do termo de pneu no modelo de tempo de volta[web:4].
-- Red Bull Racing — "Bulls' Guide To: Formula One Fuel" (histórico do limite de 105→110 kg)[web:34].
-- Reddit r/F1Technical — discussão técnica de "Fuel-corrected lap time" com estimativa de 30–35 ms/kg[web:43].
-- Regulamento Técnico FIA (Artigo relativo a fluxo de combustível, 100 kg/h) — citado em múltiplas fontes secundárias técnicas[web:33].
+- Politecnico di Torino, tese de mestrado — formulação de \(t_{fuel}(l)\) atribuída a Heilmeier et al., com coeficiente McLaren de 0,03 s/kg[6].
+- Sulsters et al., "Simulating Formula One Race Strategies" — regressão linear \(\tilde{Y}_{it} = \beta_0 + \beta_1 X_{1,it} + e_{it}\) para isolar o efeito de combustível por piloto[4].
+- Fieni et al. (2025), arXiv:2512.21570 — separação explícita do termo de combustível do termo de pneu no modelo de tempo de volta[2].
+- Red Bull Racing — "Bulls' Guide To: Formula One Fuel" (histórico do limite de 105→110 kg)[9].
+- Reddit r/F1Technical — discussão técnica de "Fuel-corrected lap time" com estimativa de 30–35 ms/kg[7].
+- Regulamento Técnico FIA (Artigo relativo a fluxo de combustível, 100 kg/h) — citado em múltiplas fontes secundárias técnicas[10].
 
 ---
 
@@ -143,20 +143,20 @@ onde a perda relativa de downforce satura para gaps pequenos e decai exponencial
 
 ### 3.3 Faixas de calibração (regulamento 2022+ de efeito solo)
 
-- Perda de downforce a 1 comprimento de carro: downforce cai de ~680 kgf (ar limpo) para ~390 kgf a 1 car-length, ~310 kgf a 0,5 car-length e ~260 kgf a 0,25 car-length (menos de 40% do pico)[web:15].
-- Perda no front wing especificamente: 30–50% de capacidade de downforce quando em ar sujo[web:15].
-- Penalidade de tempo de volta agregada: 0,35–0,50 s/volta para um carro "colado" a 1 comprimento de carro, dos quais ~65% atribuível a perda de velocidade de curva (não em retas)[web:12].
-- Redução total de downforce integrada (múltiplas zonas): até 12% de perda agregada, com deslocamento do equilíbrio aerodinâmico de 6–8% para trás[web:12].
-- Objetivo regulatório 2022 (efeito solo/underbody): a FIA visou reduzir a sensibilidade a ar sujo em relação à era 2017–2021 de wings de alta carga, mas estudos causais mostram que a penalidade de ar sujo persiste substancialmente mesmo pós-2022[web:2] — o efeito não foi eliminado, apenas atenuado.
-- Testes experimentais em escala (túnel de vento/PIV) mostram perda de downforce de até 53% a distâncias muito curtas (5 cm em modelo reduzido, sem offset lateral), com recuperação rápida ao aumentar distância ou aplicar offset[web:13].
+- Perda de downforce a 1 comprimento de carro: downforce cai de ~680 kgf (ar limpo) para ~390 kgf a 1 car-length, ~310 kgf a 0,5 car-length e ~260 kgf a 0,25 car-length (menos de 40% do pico)[13].
+- Perda no front wing especificamente: 30–50% de capacidade de downforce quando em ar sujo[13].
+- Penalidade de tempo de volta agregada: 0,35–0,50 s/volta para um carro "colado" a 1 comprimento de carro, dos quais ~65% atribuível a perda de velocidade de curva (não em retas)[14].
+- Redução total de downforce integrada (múltiplas zonas): até 12% de perda agregada, com deslocamento do equilíbrio aerodinâmico de 6–8% para trás[14].
+- Objetivo regulatório 2022 (efeito solo/underbody): a FIA visou reduzir a sensibilidade a ar sujo em relação à era 2017–2021 de wings de alta carga, mas estudos causais mostram que a penalidade de ar sujo persiste substancialmente mesmo pós-2022[15] — o efeito não foi eliminado, apenas atenuado.
+- Testes experimentais em escala (túnel de vento/PIV) mostram perda de downforce de até 53% a distâncias muito curtas (5 cm em modelo reduzido, sem offset lateral), com recuperação rápida ao aumentar distância ou aplicar offset[16].
 
 ### 3.4 Referências
 
-- "Game Theory in Formula 1: Multi-agent Physical and ..." (2025). arXiv:2503.05421 — modelo com perda de arrasto e downforce como função da proximidade longitudinal e lateral ao carro líder[web:3].
-- "The Persistence of the Dirty Air Penalty: A Causal Analysis" (2026). arXiv:2608.03192 — análise causal pós-regulamento 2022 de efeito solo, com regressão \(LapTime = \alpha + \beta_1 TyreLife + \beta_2 LapNumber + \varepsilon\) usada para isolar o efeito residual de ar sujo[web:2].
-- "On the Wake Effect and Dirty-air Generation in Formula 1 and High..." — Traffic Engineering journal (lseee.net), com definição formal de dirty air (queda >20% da energia mecânica por unidade de massa relativa ao freestream) e quantificação de 0,35–0,50 s/volta de penalidade[web:12].
-- "Experimental Analysis of Formula 1 Cars Moving Under Wake..." (IJISRT, 2025) — medições experimentais de perda de downforce por distância e offset lateral[web:13].
-- F1 Chronicle — "What Is Dirty Air In F1?" (dados quantitativos de downforce em kg por gap, atribuídos a análises de telemetria/simulação de equipes)[web:15].
+- "Game Theory in Formula 1: Multi-agent Physical and ..." (2025). arXiv:2503.05421 — modelo com perda de arrasto e downforce como função da proximidade longitudinal e lateral ao carro líder[17].
+- "The Persistence of the Dirty Air Penalty: A Causal Analysis" (2026). arXiv:2608.03192 — análise causal pós-regulamento 2022 de efeito solo, com regressão \(LapTime = \alpha + \beta_1 TyreLife + \beta_2 LapNumber + \varepsilon\) usada para isolar o efeito residual de ar sujo[15].
+- "On the Wake Effect and Dirty-air Generation in Formula 1 and High..." — Traffic Engineering journal (lseee.net), com definição formal de dirty air (queda >20% da energia mecânica por unidade de massa relativa ao freestream) e quantificação de 0,35–0,50 s/volta de penalidade[14].
+- "Experimental Analysis of Formula 1 Cars Moving Under Wake..." (IJISRT, 2025) — medições experimentais de perda de downforce por distância e offset lateral[16].
+- F1 Chronicle — "What Is Dirty Air In F1?" (dados quantitativos de downforce em kg por gap, atribuídos a análises de telemetria/simulação de equipes)[13].
 
 ---
 
@@ -197,18 +197,18 @@ m\,\frac{dv}{dt} = F_{trac}(v) - F_{drag}(v,\delta) - F_{roll}
 
 ### 4.3 Faixas de calibração
 
-- Ganho de velocidade terminal: estimativa oficial da FIA de 10–12 km/h ao final da zona de ativação; fontes técnicas independentes citam faixas mais amplas de 4–5 km/h a 15–20+ km/h dependendo da configuração de asa e do circuito (retas longas como Baku/Monza/Cidade do México apresentam ganhos maiores)[web:18][web:27].
-- Redução de arrasto: CFD mostra redução de arrasto de ~9,9% a 80 m/s (de 82,1 N para 73,9 N), acompanhada de perda de downforce de ~41,0% (44,6 N → 26,3 N) no mesmo elemento[web:10].
-- Ganho de tempo por volta em qualificação: da ordem de décimos de segundo a ~0,4–0,5 s por zona de DRS em pistas com retas longas (ex.: 0,436 s medido em simulação para Hockenheim)[web:25].
-- Regra de ativação: DRS liberado apenas dentro de zonas definidas quando o gap para o carro da frente é <1,0 s no ponto de detecção; desabilitado nas primeiras voltas/reinícios e em pista molhada[web:24][web:28].
+- Ganho de velocidade terminal: estimativa oficial da FIA de 10–12 km/h ao final da zona de ativação; fontes técnicas independentes citam faixas mais amplas de 4–5 km/h a 15–20+ km/h dependendo da configuração de asa e do circuito (retas longas como Baku/Monza/Cidade do México apresentam ganhos maiores)[18][19].
+- Redução de arrasto: CFD mostra redução de arrasto de ~9,9% a 80 m/s (de 82,1 N para 73,9 N), acompanhada de perda de downforce de ~41,0% (44,6 N → 26,3 N) no mesmo elemento[20].
+- Ganho de tempo por volta em qualificação: da ordem de décimos de segundo a ~0,4–0,5 s por zona de DRS em pistas com retas longas (ex.: 0,436 s medido em simulação para Hockenheim)[21].
+- Regra de ativação: DRS liberado apenas dentro de zonas definidas quando o gap para o carro da frente é <1,0 s no ponto de detecção; desabilitado nas primeiras voltas/reinícios e em pista molhada[22][23].
 
 ### 4.4 Referências
 
-- Wikipedia/FIA — "Drag Reduction System" — estimativa oficial da FIA de ganho de 10–12 km/h no fim da zona[web:18].
-- IEOM Society Proceedings — "CFD Investigation and Performance Analysis of the F1 Drag Reduction System" (2025) — dados quantitativos de redução de arrasto (9,9%) vs. perda de downforce (41,0%) a 80 m/s[web:10].
-- DrRacing's Blog — simulação de ganho de tempo de volta com DRS de 0,436 s em Hockenheim, comparado a resultados reais de pole position[web:25].
-- Monteiro, C.A.B. (2021). "Numerical Study of a Drag Reduction System..." — Universidade Nova de Lisboa (run.unl.pt/bitstream/10362/149236)[web:21].
-- Motorsport.com — "What is DRS in Formula 1 and how does it work?" (regras de ativação: gap <1s, zonas fixas, restrições em safety car/primeiras voltas)[web:24].
+- Wikipedia/FIA — "Drag Reduction System" — estimativa oficial da FIA de ganho de 10–12 km/h no fim da zona[18].
+- IEOM Society Proceedings — "CFD Investigation and Performance Analysis of the F1 Drag Reduction System" (2025) — dados quantitativos de redução de arrasto (9,9%) vs. perda de downforce (41,0%) a 80 m/s[20].
+- DrRacing's Blog — simulação de ganho de tempo de volta com DRS de 0,436 s em Hockenheim, comparado a resultados reais de pole position[21].
+- Monteiro, C.A.B. (2021). "Numerical Study of a Drag Reduction System..." — Universidade Nova de Lisboa (run.unl.pt/bitstream/10362/149236)[24].
+- Motorsport.com — "What is DRS in Formula 1 and how does it work?" (regras de ativação: gap <1s, zonas fixas, restrições em safety car/primeiras voltas)[22].
 
 ---
 
@@ -273,17 +273,17 @@ onde \(\sigma(\cdot)\) é a função logística, mapeando a severidade esperada 
 
 ### 5.4 Faixas de calibração (dados reais 2021–2022)
 
-- Frequência de Safety Car pleno: 24 deployments na temporada 2022 (22 corridas), vs. 16 em 2021 — aproximadamente 1,0–1,1 SC por corrida em 2022[web:32].
-- Frequência de VSC: 21 deployments em 2022 vs. 10 em 2021 — aproximadamente 0,95 VSC por corrida em 2022, quase o dobro do ano anterior[web:32].
+- Frequência de Safety Car pleno: 24 deployments na temporada 2022 (22 corridas), vs. 16 em 2021 — aproximadamente 1,0–1,1 SC por corrida em 2022[25].
+- Frequência de VSC: 21 deployments em 2022 vs. 10 em 2021 — aproximadamente 0,95 VSC por corrida em 2022, quase o dobro do ano anterior[25].
 - Isso sugere \(\lambda_{race}(SC) \approx 1{,}0\text{–}1{,}1\) e \(\lambda_{race}(VSC) \approx 0{,}9\text{–}1{,}0\) como pontos de partida realistas para calibração pós-2022, com forte variância entre circuitos (Mônaco, Bacu e Cingapura historicamente concentram mais incidentes que pistas de alta velocidade como Monza).
-- Lista de causas documentadas 2022 (Fandom/F1 Wiki): predominância de "Accident" e "Stranded/beached car" como causas, com duração média de SC pleno de 2–3 voltas e VSC de 0–2 voltas[web:44].
+- Lista de causas documentadas 2022 (Fandom/F1 Wiki): predominância de "Accident" e "Stranded/beached car" como causas, com duração média de SC pleno de 2–3 voltas e VSC de 0–2 voltas[26].
 
 ### 5.5 Referências
 
-- "Probabilistic modelling of car traffic accidents" (2024). arXiv:2410.00446 — processo de contagem com self-excitation para ocorrência temporal de acidentes, base teórica para o processo de Poisson/Hawkes aplicável a incidentes de corrida[web:19].
-- "Probabilistic Collision Risk Estimation through Gauss–Legendre..." arXiv:2507.18819 — formulação de processo de Poisson não-homogêneo \(\lambda(t) = P_{col}(t)/(1-P_{col}(t))\) para risco de colisão, adaptável à intensidade espacial por setor[web:17].
-- Auto Motor und Sport — "F1-Saison 2022: Statistik zu Safety Cars und VSC" (dados oficiais de frequência de SC/VSC 2021 vs. 2022)[web:32].
-- F1 Wiki (Fandom) — "Safety Car" (lista cronológica de deployments de SC e VSC com causa, volta de início/fim)[web:44].
+- "Probabilistic modelling of car traffic accidents" (2024). arXiv:2410.00446 — processo de contagem com self-excitation para ocorrência temporal de acidentes, base teórica para o processo de Poisson/Hawkes aplicável a incidentes de corrida[27].
+- "Probabilistic Collision Risk Estimation through Gauss–Legendre..." arXiv:2507.18819 — formulação de processo de Poisson não-homogêneo \(\lambda(t) = P_{col}(t)/(1-P_{col}(t))\) para risco de colisão, adaptável à intensidade espacial por setor[28].
+- Auto Motor und Sport — "F1-Saison 2022: Statistik zu Safety Cars und VSC" (dados oficiais de frequência de SC/VSC 2021 vs. 2022)[25].
+- F1 Wiki (Fandom) — "Safety Car" (lista cronológica de deployments de SC e VSC com causa, volta de início/fim)[26].
 
 ---
 
@@ -345,21 +345,87 @@ Isso determina o ponto (em % de água na pista, correlacionável a mm/h de chuva
 
 ### 6.4 Faixas de calibração
 
-- Degradação de pneu Wet em chuva forte: penalidade de ritmo de +3,0 s/volta em relação ao composto de referência, com taxa de degradação adicional de ~0,035 s/volta; Intermediário em chuva leve apresenta degradação moderada de ~0,060 s/volta[web:26].
-- Estados operacionais formais no regulamento 2026 (extensível à era pós-2022): pista classificada explicitamente exige uso do "wet-weather tyre" (Full Wet) até que as luzes do Safety Car sejam apagadas, distinguindo formalmente Intermediário de Full Wet como especificações separadas (Art. B6.1.1), com penalidade de stop-and-go para uso incorreto (Art. B6.3.7)[web:29].
-- Não há um limiar oficial de mm/h de chuva publicado pela FIA para troca obrigatória — a decisão é operacional (piloto/equipe/diretor de prova), reforçando a necessidade de um modelo estocástico (Markov) em vez de um limiar determinístico rígido no motor de simulação[web:29].
+- Degradação de pneu Wet em chuva forte: penalidade de ritmo de +3,0 s/volta em relação ao composto de referência, com taxa de degradação adicional de ~0,035 s/volta; Intermediário em chuva leve apresenta degradação moderada de ~0,060 s/volta[29].
+- Estados operacionais formais no regulamento 2026 (extensível à era pós-2022): pista classificada explicitamente exige uso do "wet-weather tyre" (Full Wet) até que as luzes do Safety Car sejam apagadas, distinguindo formalmente Intermediário de Full Wet como especificações separadas (Art. B6.1.1), com penalidade de stop-and-go para uso incorreto (Art. B6.3.7)[30].
+- Não há um limiar oficial de mm/h de chuva publicado pela FIA para troca obrigatória — a decisão é operacional (piloto/equipe/diretor de prova), reforçando a necessidade de um modelo estocástico (Markov) em vez de um limiar determinístico rígido no motor de simulação[30].
 - Para calibração inicial sugerida no ApexSim (ausência de matriz FIA publicada — valores de engenharia de simulação, ajustáveis): \(p_{SS}\approx 0{,}90\text{–}0{,}97\), \(p_{UU}\approx 0{,}55\text{–}0{,}70\), \(p_{MM}\approx 0{,}70\text{–}0{,}85\) por passo de 1 volta em cenário de chuva instável, com transições Seco→Molhado direto tipicamente muito baixas (\(p_{SM} < 0{,}02\)), favorecendo caminho via estado Úmido.
 
 ### 6.5 Referências
 
-- SFU (Simon Fraser University) — "STAT 380: Markov Chains" (formulação canônica da propriedade de Markov e matriz de transição para estados de clima Seco/Molhado, usada como base didática direta para o modelo do ApexSim)[web:16].
-- "F1 ML Prediction System" (documentação Mintlify) — valores de referência de degradação e ritmo por composto em condições de chuva (TIRE_PACE, TIRE_DEG para WET/INTERMEDIATE)[web:26].
-- SportRules.org — "F1 Wet Weather, Intermediate Tyres, and Standing Start Rules" — citação direta dos artigos regulatórios B6.1.1 e B6.3.7 sobre especificações de pneus de chuva[web:29].
+- SFU (Simon Fraser University) — "STAT 380: Markov Chains" (formulação canônica da propriedade de Markov e matriz de transição para estados de clima Seco/Molhado, usada como base didática direta para o modelo do ApexSim)[31].
+- "F1 ML Prediction System" (documentação Mintlify) — valores de referência de degradação e ritmo por composto em condições de chuva (TIRE_PACE, TIRE_DEG para WET/INTERMEDIATE)[29].
+- SportRules.org — "F1 Wet Weather, Intermediate Tyres, and Standing Start Rules" — citação direta dos artigos regulatórios B6.1.1 e B6.3.7 sobre especificações de pneus de chuva[30].
 
 ---
 
 ## Notas de Implementação para o Motor de Eventos
 
-- **Ordem de composição do tempo de volta:** recomenda-se a estrutura aditiva \(T_{lap} = T_{nom} + \Delta t_{fuel} + \Delta t_{tire} + \Delta t_{cliff} + \Delta t_{dirtyair} - \Delta t_{DRS} + \Delta t_{clima} + \varepsilon\), com \(\varepsilon \sim \mathcal{N}(0,\sigma^2)\) representando variabilidade residual do piloto, consistente com Sulsters et al.[web:14] e Fieni et al.[web:4].
-- **Fontes de dados abertos para calibração contínua:** FastF1 (Python API sobre dados oficiais de timing/telemetria da F1) é a fonte primária usada nos papers mais recentes de 2025–2026 (arXiv:2512.00640, arXiv:2608.03192) e deve ser a base de ingestão de dados do ApexSim para recalibração periódica dos coeficientes acima[web:1][web:2].
+- **Ordem de composição do tempo de volta:** recomenda-se a estrutura aditiva \(T_{lap} = T_{nom} + \Delta t_{fuel} + \Delta t_{tire} + \Delta t_{cliff} + \Delta t_{dirtyair} - \Delta t_{DRS} + \Delta t_{clima} + \varepsilon\), com \(\varepsilon \sim \mathcal{N}(0,\sigma^2)\) representando variabilidade residual do piloto, consistente com Sulsters et al.[4] e Fieni et al.[2].
+- **Fontes de dados abertos para calibração contínua:** FastF1 (Python API sobre dados oficiais de timing/telemetria da F1) é a fonte primária usada nos papers mais recentes de 2025–2026 (arXiv:2512.00640, arXiv:2608.03192) e deve ser a base de ingestão de dados do ApexSim para recalibração periódica dos coeficientes acima[3][15].
 - **Independência de eventos estocásticos:** os módulos de acidente (Seção 5) e clima (Seção 6) devem ser acoplados — \(w_{weather}(t)\) na intensidade de incidentes deve referenciar o estado atual da cadeia de Markov climática, já que pista Úmida/Molhada aumenta materialmente o risco de incidente por perda de aderência.
+
+---
+
+## Referências
+
+[1] F1 Chronicle / Substack — "F1 Tyre Degradation in 2026: The Data Behind the Flipped Hierarchy" (dados agregados de degradação por temporada 2022–2026 a partir de timing oficial).
+
+[2] Fieni, G. et al. "Towards Learning-Based Formula 1 Race Strategies" (2025). arXiv:2512.21570 — modelo \(T_{lap} = T_{nom}(\ldots) + \Delta T_j(TW)\) com correção de combustível separada.
+
+[3] "A State-Space Approach to Modeling Tire Degradation in Formula 1 Racing" (2025). arXiv:2512.00640 (stat.AP) — framework bayesiano de espaço de estados usando dados FastF1, com reset de estado em pit stops e degradação específica por composto.
+
+[4] Sulsters et al., "Simulating Formula One Race Strategies" — modelo quadrático de resíduos por composto após remoção do efeito de combustível.
+
+[5] Heilmeier, A. et al. (2020). "Optimal Tyre Management of a Formula One Car" — IFAC 2020, base para \(t_{tire}(a,c) = k_0(c) + k_1(c)\cdot a\).
+
+[6] Tese de mestrado, Politecnico di Torino — "Probabilistic Simulator for Race Event..." (webthesis.biblio.polito.it/35913) — consolidação dos modelos linear/quadrático e citação de coeficientes McLaren de 0,03 s/kg.
+
+[7] Reddit r/F1Technical — discussão técnica de "Fuel-corrected lap time" com estimativa de 30–35 ms/kg.
+
+[8] Regulamento Técnico FIA — limite de combustível de 110 kg por corrida (vigente desde 2019, mantido no regulamento pós-2022).
+
+[9] Red Bull Racing — "Bulls' Guide To: Formula One Fuel" (histórico do limite de 105→110 kg).
+
+[10] Regulamento Técnico FIA (Artigo relativo a fluxo máximo de combustível, 100 kg/h) — citado em múltiplas fontes secundárias técnicas.
+
+[11] Fontes de engenharia de estratégia (F1Metrics, RaceFans, equipes) — estimativas de consumo real de corrida entre 95–110 kg com estratégia de "short-fueling".
+
+[12] Estimativa derivada de dados de timing oficial (FastF1) — taxa de queima por volta de ~1,5–2,0 kg/volta em corridas de 57–70 voltas.
+
+[13] F1 Chronicle — "What Is Dirty Air In F1?" (dados quantitativos de downforce em kg por gap, atribuídos a análises de telemetria/simulação de equipes).
+
+[14] "On the Wake Effect and Dirty-air Generation in Formula 1 and High..." — Traffic Engineering journal (lseee.net), com definição formal de dirty air (queda >20% da energia mecânica por unidade de massa relativa ao freestream) e quantificação de 0,35–0,50 s/volta de penalidade.
+
+[15] "The Persistence of the Dirty Air Penalty: A Causal Analysis" (2026). arXiv:2608.03192 — análise causal pós-regulamento 2022 de efeito solo, com regressão \(LapTime = \alpha + \beta_1 TyreLife + \beta_2 LapNumber + \varepsilon\) usada para isolar o efeito residual de ar sujo.
+
+[16] "Experimental Analysis of Formula 1 Cars Moving Under Wake..." (IJISRT, 2025) — medições experimentais de perda de downforce por distância e offset lateral.
+
+[17] "Game Theory in Formula 1: Multi-agent Physical and ..." (2025). arXiv:2503.05421 — modelo com perda de arrasto e downforce como função da proximidade longitudinal e lateral ao carro líder.
+
+[18] Wikipedia/FIA — "Drag Reduction System" — estimativa oficial da FIA de ganho de 10–12 km/h no fim da zona.
+
+[19] Fontes técnicas independentes (análises de engenharia, fóruns especializados) — estimativas de ganho de velocidade com DRS em configurações de asa variadas (4–5 km/h a 15–20+ km/h).
+
+[20] IEOM Society Proceedings — "CFD Investigation and Performance Analysis of the F1 Drag Reduction System" (2025) — dados quantitativos de redução de arrasto (9,9%) vs. perda de downforce (41,0%) a 80 m/s.
+
+[21] DrRacing's Blog — simulação de ganho de tempo de volta com DRS de 0,436 s em Hockenheim, comparado a resultados reais de pole position.
+
+[22] Motorsport.com — "What is DRS in Formula 1 and how does it work?" (regras de ativação: gap <1s, zonas fixas, restrições em safety car/primeiras voltas).
+
+[23] Regulamento Esportivo FIA — regras de ativação de DRS (gap <1,0 s no ponto de detecção; desabilitado nas primeiras voltas/reinícios e em pista molhada).
+
+[24] Monteiro, C.A.B. (2021). "Numerical Study of a Drag Reduction System..." — Universidade Nova de Lisboa (run.unl.pt/bitstream/10362/149236).
+
+[25] Auto Motor und Sport — "F1-Saison 2022: Statistik zu Safety Cars und VSC" (dados oficiais de frequência de SC/VSC 2021 vs. 2022).
+
+[26] F1 Wiki (Fandom) — "Safety Car" (lista cronológica de deployments de SC e VSC com causa, volta de início/fim).
+
+[27] "Probabilistic modelling of car traffic accidents" (2024). arXiv:2410.00446 — processo de contagem com self-excitation para ocorrência temporal de acidentes, base teórica para o processo de Poisson/Hawkes aplicável a incidentes de corrida.
+
+[28] "Probabilistic Collision Risk Estimation through Gauss–Legendre..." arXiv:2507.18819 — formulação de processo de Poisson não-homogêneo \(\lambda(t) = P_{col}(t)/(1-P_{col}(t))\) para risco de colisão, adaptável à intensidade espacial por setor.
+
+[29] "F1 ML Prediction System" (documentação Mintlify) — valores de referência de degradação e ritmo por composto em condições de chuva (TIRE_PACE, TIRE_DEG para WET/INTERMEDIATE).
+
+[30] SportRules.org — "F1 Wet Weather, Intermediate Tyres, and Standing Start Rules" — citação direta dos artigos regulatórios B6.1.1 e B6.3.7 sobre especificações de pneus de chuva.
+
+[31] SFU (Simon Fraser University) — "STAT 380: Markov Chains" (formulação canônica da propriedade de Markov e matriz de transição para estados de clima Seco/Molhado, usada como base didática direta para o modelo do ApexSim).
