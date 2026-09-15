@@ -1,0 +1,22 @@
+# Material de estudo pessoal — não faz parte do repositório do grupo
+CLAUDE.md
+ApexSim_Roadmap.pdf
+Cronograma-MC857.txt
+PDD_MC857A_2s2026.pdf
+
+# Datasets brutos e cache do FastF1 (seção 5 do CLAUDE.md)
+data/raw/
+cache/
+
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/

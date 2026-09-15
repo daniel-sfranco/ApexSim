@@ -1,0 +1,33 @@
+# .github/CODEOWNERS
+# Arquivo de governança e revisão de código para o ApexSim
+
+# Donos globais (Daniel como Admin e Octávio como responsável por Plataforma)
+*                                       @daniel-sfranco @OctavioNascimento
+
+# --- PLATAFORMA, CI/CD E DADOS (Octávio) ---
+docker-compose.yml                      @OctavioNascimento
+Dockerfile*                             @OctavioNascimento
+Makefile                                @OctavioNascimento
+.github/workflows/                      @OctavioNascimento
+backend/db/                             @OctavioNascimento
+backend/migrations/                     @OctavioNascimento
+circuits/                               @OctavioNascimento
+
+# --- MOTOR DE SIMULAÇÃO (Gabriel) ---
+backend/sim/                            @GiroZS
+
+# --- FÍSICA E EVENTOS ESTOCÁSTICOS (Isaac) ---
+backend/physics/                        @isaacdono
+docs/fisica.md                          @isaacdono
+notebooks/                              @isaacdono
+
+# --- MODELAGEM DE PISTA, ESTRATÉGIA E IA (Daniel) ---
+docs/track_map_schema.md                @daniel-sfranco
+docs/estrategia.md                      @daniel-sfranco
+track_maps/                             @daniel-sfranco
+backend/strategy/                       @daniel-sfranco
+
+# --- FRONTEND E UX (Anderson) ---
+# (Ajuste o nome da pasta de acordo com o scaffold que o Octávio criar, ex: web/ ou frontend/)
+frontend/                               @CeltDev
+web/                                    @CeltDev

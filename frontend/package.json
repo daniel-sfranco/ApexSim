@@ -1,0 +1,9 @@
+{
+  "name": "apexsim-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Placeholder do serviço web — o scaffold Next.js é entregável do Anderson (ficha M0)",
+  "scripts": {
+    "dev": "node server.js"
+  }
+}

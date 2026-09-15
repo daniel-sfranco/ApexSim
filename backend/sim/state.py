@@ -11,11 +11,9 @@ interface (quais dados existem, quais tipos têm, o que tick() recebe e
 devolve) antes de implementar as regras de física/estratégia.
 """
 
+import random
 from dataclasses import dataclass, field
 from enum import Enum, auto
-import random
-from typing import Optional, List, Dict
-
 
 
 
@@ -27,12 +25,14 @@ class TyreCompound(Enum):
     INTERMEDIATE, WET: compostos de chuva.
     UNKNOWN: caso o composto não seja conhecido (ex.: erro de leitura).
     """
+
     SOFT = auto()
     MEDIUM = auto()
     HARD = auto()
     INTERMEDIATE = auto()
     WET = auto()
     UNKNOWN = auto()
+
 
 class PitStatus(Enum):
     """Situação do piloto em relação ao pit lane no tick atual.
@@ -42,6 +42,7 @@ class PitStatus(Enum):
     IN_PIT: piloto está parado no box (troca de pneu/reparo).
     EXITING: piloto está saindo do pit lane de volta à pista.
     """
+
     NONE = auto()
     ENTERING = auto()
     IN_PIT = auto()
@@ -56,6 +57,7 @@ class TrackStatus(Enum):
     SAFETY_CAR: safety car físico em pista.
     RED: bandeira vermelha (corrida interrompida).
     """
+
     GREEN = auto()
     YELLOW = auto()
     SAFETY_CAR = auto()
@@ -65,6 +67,7 @@ class TrackStatus(Enum):
 # ---------------------------------------------------------------------------
 # LAP RESULT
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class LapResult:
@@ -92,22 +95,24 @@ class LapResult:
         pit_time: Duração da passagem pelo pit lane nesta volta, em
             segundos (None se pit_stop for False).
     """
+
     driver_id: str
     lap_number: int
     lap_time: float
     position: int
     gap_to_leader: float
-    gap_to_ahead: Optional[float]
+    gap_to_ahead: float | None
     tyre_compound: TyreCompound
     tyre_age: int
     fuel_load: float
     pit_stop: bool
-    pit_time: Optional[float] = None
+    pit_time: float | None = None
 
 
 # ---------------------------------------------------------------------------
 # DRIVER STATE
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class DriverState:
@@ -136,14 +141,15 @@ class DriverState:
         is_retired: True se o piloto abandonou a corrida.
         total_race_time: Tempo total acumulado de corrida, em segundos.
     """
+
     driver_id: str
     name: str
     team: str
     position: int
     current_lap: int
-    last_lap_time: Optional[float]
+    last_lap_time: float | None
     gap_to_leader: float
-    gap_to_ahead: Optional[float]
+    gap_to_ahead: float | None
     tyre_compound: TyreCompound
     tyre_age: int
     fuel_load: float
@@ -157,6 +163,7 @@ class DriverState:
 # ---------------------------------------------------------------------------
 # RACE STATE
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class RaceState:
@@ -182,11 +189,12 @@ class RaceState:
         is_finished: True quando a corrida foi encerrada (todas as
             voltas cumpridas, bandeirada, ou interrompida em definitivo).
     """
+
     current_lap: int
     total_laps: int
     track_status: TrackStatus
-    drivers: Dict[str, DriverState]
-    lap_history: List[LapResult] = field(default_factory=list)
+    drivers: dict[str, DriverState]
+    lap_history: list[LapResult] = field(default_factory=list)
     elapsed_time: float = 0.0
     is_finished: bool = False
     rng = random.random()  # Gerador de números aleatórios para eventos estocásticos
@@ -195,6 +203,7 @@ class RaceState:
 # ---------------------------------------------------------------------------
 # CONTRATO DO MOTOR: tick()
 # ---------------------------------------------------------------------------
+
 
 def tick(state: RaceState, delta_time: float) -> RaceState:
     """Avança a simulação em um passo de tempo (ou de volta).
@@ -220,17 +229,26 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
     for driver in state.drivers.values():
         # Simulação simplificada: cada piloto completa uma volta em base_lap_time
         driver.current_lap += 1
-        driver.last_lap_time = driver.base_lap_time + random.gauss(0, 1.0)  # Adiciona variação aleatória
+        # Adiciona variação aleatória.
+        driver.last_lap_time = driver.base_lap_time + random.gauss(0, 1.0)
         driver.total_race_time += driver.last_lap_time
     for driver in state.drivers.values():
-        driver.position = sorted(state.drivers.values(), key=lambda d: d.total_race_time).index(driver) + 1
+        sorted_drivers = sorted(
+            state.drivers.values(),
+            key=lambda d: d.total_race_time,
+        )
+        driver.position = sorted_drivers.index(driver) + 1
     for driver in state.drivers.values():
         if driver.position == 1:
             driver.gap_to_leader = 0.0
             driver.gap_to_ahead = None
         else:
             leader_time = next(d.total_race_time for d in state.drivers.values() if d.position == 1)
-            ahead_time = next(d.total_race_time for d in state.drivers.values() if d.position == driver.position - 1)
+            ahead_time = next(
+                d.total_race_time
+                for d in state.drivers.values()
+                if d.position == driver.position - 1
+            )
             driver.gap_to_leader = driver.total_race_time - leader_time
             driver.gap_to_ahead = driver.total_race_time - ahead_time
     state.current_lap += 1

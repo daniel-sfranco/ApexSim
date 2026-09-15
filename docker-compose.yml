@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-apexsim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apexsim}
+      POSTGRES_DB: ${POSTGRES_DB:-apexsim}
+    # 5433 no host por padrão: quem já tem um Postgres local na 5432 não
+    # consegue subir o ambiente. A API fala com o banco pela rede interna do
+    # compose (db:5432), então isto só serve para clientes fora do Docker.
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Sem healthcheck a API sobe antes do banco aceitar conexão e o primeiro
+    # `make up` de outra pessoa falha — que é justamente o critério do M0.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-apexsim} -d ${POSTGRES_DB:-apexsim}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-apexsim}:${POSTGRES_PASSWORD:-apexsim}@db:5432/${POSTGRES_DB:-apexsim}
+      FASTF1_CACHE_DIR: /cache/fastf1
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./circuits:/circuits
+      - fastf1_cache:/cache/fastf1
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: node:20-slim
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  fastf1_cache:
