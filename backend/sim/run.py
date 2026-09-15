@@ -1,14 +1,14 @@
+import argparse
 import random
+
 from .state import (
-    RaceState,
     DriverState,
-    LapResult,
-    TyreCompound,
     PitStatus,
+    RaceState,
     TrackStatus,
+    TyreCompound,
     tick,
 )
-import argparse
 
 GRID_20_PILOTOS = [
     ("VER", "Max Verstappen", "Red Bull"),
@@ -95,7 +95,7 @@ def main():
     args = parser.parse_args()
     random.seed(args.seed)
     race_state = montar_grid_inicial()
-    for i in range(args.laps):
+    for _i in range(args.laps):
         tick(race_state, delta_time=1.0)
 
 

@@ -16,8 +16,6 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 
 
-
-
 class TyreCompound(Enum):
     """Composto de pneu montado no carro no momento do registro.
 
@@ -278,7 +276,12 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
         )
  
     for driver in state.drivers.values():
-        print(f"Driver {driver.driver_id}: Lap {driver.current_lap}, Last Lap Time {driver.last_lap_time:.2f}s, Total Time {driver.total_race_time:.2f}s, Position {driver.position}, Gap to Leader {driver.gap_to_leader:.2f}s, Gap to Ahead {driver.gap_to_ahead if driver.gap_to_ahead is not None else 'N/A'}s")
+        print(
+            f"Driver {driver.driver_id}: Lap {driver.current_lap}, "
+            f"Last Lap Time {driver.last_lap_time:.2f}s, Total Time {driver.total_race_time:.2f}s, "
+            f"Position {driver.position}, Gap to Leader {driver.gap_to_leader:.2f}s, "
+            f"Gap to Ahead {driver.gap_to_ahead if driver.gap_to_ahead is not None else 'N/A'}s"
+        )
 
     return state
  

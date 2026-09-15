@@ -19,12 +19,12 @@ Rodar com:
 """
 
 import random
-import sys
 
 import pytest
 
-from sim.run import montar_grid_inicial, main, GRID_20_PILOTOS
-from sim.state import PitStatus, TyreCompound, RaceState, DriverState, TrackStatus, tick
+from sim.run import montar_grid_inicial
+from sim.state import DriverState, PitStatus, RaceState, TrackStatus, TyreCompound, tick
+
 # ---------------------------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------------------------
@@ -58,7 +58,6 @@ def piloto(driver_id: str, base_lap_time: float, position: int = 1) -> DriverSta
  
 def estado_com(pilotos: list[DriverState], total_laps: int = 58) -> RaceState:
     """Monta um RaceState mínimo a partir de uma lista de pilotos já prontos."""
-    from sim.state import TrackStatus
  
     return RaceState(
         current_lap=0,
