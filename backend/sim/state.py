@@ -205,24 +205,24 @@ class RaceState:
 
 def tick(state: RaceState, delta_time: float) -> RaceState:
     """Avança a simulação em um passo de tempo (ou de volta).
- 
+
     Este é o contrato central do motor: dado um RaceState e um intervalo
     de tempo a avançar, a função deve produzir o próximo RaceState,
     aplicando as regras de física, estratégia, degradação de pneus,
     consumo de combustível e eventuais eventos de pit stop.
- 
+
     Args:
         state: Estado atual da corrida, imediatamente antes deste tick.
         delta_time: Quantidade de tempo, em segundos, que este tick deve
             avançar na simulação. Permite tanto um motor orientado a
             tempo fixo (ex.: 0.1s por tick) quanto orientado a eventos.
- 
+
     Returns:
         RaceState: O novo estado da corrida após aplicar este tick,
         incluindo atualizações de posição, tempos, gaps, pneus,
         combustível e status de pit de cada piloto, além de qualquer
         LapResult novo que tenha sido gerado neste passo.
- 
+
     """
     for driver in state.drivers.values():
         # Simulação simplificada: cada piloto completa uma volta em base_lap_time
@@ -250,7 +250,7 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
             driver.gap_to_leader = driver.total_race_time - leader_time
             driver.gap_to_ahead = driver.total_race_time - ahead_time
     state.current_lap += 1
- 
+
     # Registra o resultado desta volta no histórico. Isso precisa vir
     # DEPOIS do cálculo de posição/gap acima, pois LapResult é um
     # "retrato" da volta já concluída — todos os campos (posição, gaps)
@@ -274,7 +274,7 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
                 pit_time=None,
             )
         )
- 
+
     for driver in state.drivers.values():
         print(
             f"Driver {driver.driver_id}: Lap {driver.current_lap}, "
@@ -284,4 +284,3 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
         )
 
     return state
- 

@@ -72,25 +72,22 @@ def montar_grid_inicial() -> RaceState:
         is_finished=False,
     )
 
+
 def main():
-    parser = argparse.ArgumentParser(
-        description="Roda a simulação"
-    )
+    parser = argparse.ArgumentParser(description="Roda a simulação")
 
     # 2. Voltas
     parser.add_argument(
-        "-l", "--laps",
-        type=int,
-        default=1,
-        help="Quantidade de voltas a simular, default = 1"
+        "-l", "--laps", type=int, default=1, help="Quantidade de voltas a simular, default = 1"
     )
 
     # 3. Seed aleatória
     parser.add_argument(
-        "-s", "--seed", 
-        type=int, 
-        default=1, 
-        help="Seed para a geração de números aleatórios (default: 1)"
+        "-s",
+        "--seed",
+        type=int,
+        default=1,
+        help="Seed para a geração de números aleatórios (default: 1)",
     )
     args = parser.parse_args()
     random.seed(args.seed)

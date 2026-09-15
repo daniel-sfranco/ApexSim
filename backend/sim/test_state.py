@@ -224,7 +224,6 @@ def test_lap_result_e_imutavel(race_state: RaceState):
 # ---------------------------------------------------------------------------
 
 
-
 def test_tick_aumenta_numero_de_voltas(race_state: RaceState):
     """Testa o comportamento do tick() para uma volta completa."""
     # Simula o avanço de uma volta
