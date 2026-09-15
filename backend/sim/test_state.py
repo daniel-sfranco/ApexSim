@@ -223,25 +223,6 @@ def test_lap_result_e_imutavel(race_state: RaceState):
 # TESTE DE CONTRATO: tick()
 # ---------------------------------------------------------------------------
 
-# def test_tick_ainda_nao_implementado(race_state: RaceState):
-#     """tick() deve recusar execução explicitamente enquanto não implementado.
-
-#     Isso é intencional nesta fase: preferimos uma falha clara e imediata
-#     (NotImplementedError) a um tick() "silencioso" que devolvesse o
-#     estado inalterado ou um estado incorreto.
-#     """
-#     with pytest.raises(NotImplementedError):
-#         tick(race_state, delta_time=0.1)
-
-
-# def test_tick_aceita_grid_completa_de_20_pilotos_como_entrada(race_state: RaceState):
-#     """Ainda que não implementado, tick() deve aceitar uma grid de 20
-#     pilotos sem erro de assinatura (TypeError) — só deve falhar por
-#     NotImplementedError, o que confirma que o contrato de tipos está ok.
-#     """
-#     assert len(race_state.drivers) == 20
-#     with pytest.raises(NotImplementedError):
-#         tick(race_state, delta_time=1.0)
 
 
 def test_tick_aumenta_numero_de_voltas(race_state: RaceState):

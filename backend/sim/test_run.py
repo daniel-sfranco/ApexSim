@@ -271,7 +271,7 @@ def test_lap_result_e_imutavel_apos_registrado(monkeypatch, capsys):
     capsys.readouterr()
  
     registro = estado.lap_history[0]
-    with pytest.raises(Exception):
+    with pytest.raises(AttributeError):
         registro.lap_time = 999.0  # type: ignore[misc]
  
  
