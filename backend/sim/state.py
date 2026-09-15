@@ -16,7 +16,7 @@ from enum import Enum, auto
 import random
 from typing import Optional, List, Dict
 
-random.seed(42)
+
 
 
 
@@ -198,33 +198,25 @@ class RaceState:
 
 def tick(state: RaceState, delta_time: float) -> RaceState:
     """Avança a simulação em um passo de tempo (ou de volta).
-
+ 
     Este é o contrato central do motor: dado um RaceState e um intervalo
     de tempo a avançar, a função deve produzir o próximo RaceState,
     aplicando as regras de física, estratégia, degradação de pneus,
     consumo de combustível e eventuais eventos de pit stop.
-
-    Nenhuma lógica é implementada nesta fase — apenas a assinatura,
-    para que o restante do motor (e eventuais testes) possa ser
-    desenvolvido contra uma interface estável.
-
+ 
     Args:
         state: Estado atual da corrida, imediatamente antes deste tick.
         delta_time: Quantidade de tempo, em segundos, que este tick deve
             avançar na simulação. Permite tanto um motor orientado a
             tempo fixo (ex.: 0.1s por tick) quanto orientado a eventos.
-
+ 
     Returns:
         RaceState: O novo estado da corrida após aplicar este tick,
         incluindo atualizações de posição, tempos, gaps, pneus,
         combustível e status de pit de cada piloto, além de qualquer
         LapResult novo que tenha sido gerado neste passo.
-
-    Raises:
-        NotImplementedError: Sempre, nesta fase — a lógica ainda não
-            foi implementada. Esta função existe apenas como contrato.
+ 
     """
-    # raise NotImplementedError("Lógica de tick() ainda não implementada.")
     for driver in state.drivers.values():
         # Simulação simplificada: cada piloto completa uma volta em base_lap_time
         driver.current_lap += 1
@@ -242,5 +234,33 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
             driver.gap_to_leader = driver.total_race_time - leader_time
             driver.gap_to_ahead = driver.total_race_time - ahead_time
     state.current_lap += 1
+ 
+    # Registra o resultado desta volta no histórico. Isso precisa vir
+    # DEPOIS do cálculo de posição/gap acima, pois LapResult é um
+    # "retrato" da volta já concluída — todos os campos (posição, gaps)
+    # já devem estar com os valores finais deste tick.
+    # Iteramos em ordem de posição (não em ordem de dict) só para o
+    # histórico ficar legível quando inspecionado depois (P1 primeiro).
+    pilotos_em_ordem = sorted(state.drivers.values(), key=lambda d: d.position)
+    for driver in pilotos_em_ordem:
+        state.lap_history.append(
+            LapResult(
+                driver_id=driver.driver_id,
+                lap_number=driver.current_lap,
+                lap_time=driver.last_lap_time,
+                position=driver.position,
+                gap_to_leader=driver.gap_to_leader,
+                gap_to_ahead=driver.gap_to_ahead,
+                tyre_compound=driver.tyre_compound,
+                tyre_age=driver.tyre_age,
+                fuel_load=driver.fuel_load,
+                pit_stop=False,  # lógica de pit ainda não implementada
+                pit_time=None,
+            )
+        )
+ 
     for driver in state.drivers.values():
         print(f"Driver {driver.driver_id}: Lap {driver.current_lap}, Last Lap Time {driver.last_lap_time:.2f}s, Total Time {driver.total_race_time:.2f}s, Position {driver.position}, Gap to Leader {driver.gap_to_leader:.2f}s, Gap to Ahead {driver.gap_to_ahead if driver.gap_to_ahead is not None else 'N/A'}s")
+
+    return state
+ 
