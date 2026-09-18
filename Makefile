@@ -24,6 +24,10 @@ plot:
 test:
 	docker compose run --rm api pytest
 
+# Validação lógica dos mapas semânticos de pista (contrato D4).
+validate-tracks:
+	docker compose run --rm api python -m app.pipeline.validate_track_map
+
 lint:
 	docker compose run --rm api ruff check .
 	docker compose run --rm api ruff format --check .
