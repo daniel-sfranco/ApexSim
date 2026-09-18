@@ -15,6 +15,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # Saída do contrato D3, consumida por Daniel (anotação) e Anderson (minimapa).
 CIRCUITS_DIR = REPO_ROOT / "circuits"
 
+# Ferramentas internas e mapas semânticos anotados (contrato D4).
+TOOLS_DIR = REPO_ROOT / "tools"
+TRACK_EDITOR_DIR = TOOLS_DIR / "track_editor"
+TRACK_MAPS_DIR = REPO_ROOT / "track_maps"
+
 # Datasets brutos e cache do FastF1 — fora do controle de versão.
 DATA_RAW_DIR = REPO_ROOT / "data" / "raw"
 

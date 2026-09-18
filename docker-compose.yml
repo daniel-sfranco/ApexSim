@@ -30,6 +30,8 @@ services:
     volumes:
       - ./backend:/app
       - ./circuits:/circuits
+      - ./tools:/tools
+      - ./track_maps:/track_maps
       - fastf1_cache:/cache/fastf1
     depends_on:
       db:
