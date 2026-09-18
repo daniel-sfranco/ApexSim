@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from app.config import CIRCUITS_DIR, TRACK_EDITOR_DIR
+from app.config import CIRCUITS_DIR, TRACK_EDITOR_DIR, TRACK_MAPS_DIR
 from app.main import app
 
 client = TestClient(app)
@@ -52,13 +52,18 @@ def test_save_and_get_track_map_api():
         "points": [{"x": 0.0, "y": 0.0, "distance_m": 0.0}],
         "zones": [{"type": "sector", "start_m": 0, "end_m": 1200, "props": {"number": 1}}],
     }
-    # Salvar
-    resp_post = client.post("/api/track-maps/test_circuit", json=payload)
-    assert resp_post.status_code == 200
-    assert resp_post.json()["status"] == "saved"
+    test_file = TRACK_MAPS_DIR / "test_circuit.json"
+    try:
+        # Salvar
+        resp_post = client.post("/api/track-maps/test_circuit", json=payload)
+        assert resp_post.status_code == 200
+        assert resp_post.json()["status"] == "saved"
 
-    # Recuperar
-    resp_get = client.get("/api/track-maps/test_circuit")
-    assert resp_get.status_code == 200
-    assert resp_get.json()["circuit_id"] == "test_circuit"
-    assert len(resp_get.json()["zones"]) == 1
+        # Recuperar
+        resp_get = client.get("/api/track-maps/test_circuit")
+        assert resp_get.status_code == 200
+        assert resp_get.json()["circuit_id"] == "test_circuit"
+        assert len(resp_get.json()["zones"]) == 1
+    finally:
+        if test_file.exists():
+            test_file.unlink()
