@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 # uv vem da imagem oficial: instala as dependências em segundos e garante o
 # mesmo lockfile nas cinco máquinas do grupo.
-COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.12.17 /uv /usr/local/bin/uv
 
 WORKDIR /app
 
