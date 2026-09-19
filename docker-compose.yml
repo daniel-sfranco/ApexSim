@@ -22,6 +22,9 @@ services:
 
   api:
     build: ./backend
+    # Migrations antes da API: quem dá `git pull` e `make up` sempre sobe com o
+    # schema atualizado, e os bancos locais do grupo não divergem.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-apexsim}:${POSTGRES_PASSWORD:-apexsim}@db:5432/${POSTGRES_DB:-apexsim}
       FASTF1_CACHE_DIR: /cache/fastf1
