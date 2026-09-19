@@ -12,6 +12,13 @@ dependencies = [
     "numpy>=2.0",
     "pandas>=2.2",
     "matplotlib>=3.9",
+    # Banco de dados. SQLAlchemy 2 + Alembic é o combo exigido pelo roadmap
+    # ("migrations com Alembic desde o primeiro dia"). psycopg[binary] é o
+    # driver PostgreSQL mantido (v3) e já traz a libpq, então a imagem slim
+    # não precisa de libpq-dev.
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
