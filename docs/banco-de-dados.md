@@ -42,7 +42,7 @@ erDiagram
         jsonb config
     }
     races {
-        int id PK
+        uuid id PK "race_id do contrato D2"
         bigint seed
         string status
         jsonb config
@@ -87,8 +87,14 @@ o motor mapeia `driver_id` (código FIA) → `entry_id` uma vez por corrida.
 **Configuração da corrida e do setup em JSONB.** O contrato de API de criação de
 corrida (D2) ainda não está no repositório; normalizar agora exigiria uma
 migration a cada ajuste dele. As tabelas de que os gráficos dependem
-(`lap_records`, `race_events`) são totalmente relacionais. Quando o D2 congelar,
+(`lap_records`, `race_events`) são totalmente relacionais. Abandono de piloto
+(`is_retired` do D2) e outros marcos entram como `race_events` com `entry_id`. Quando o D2 congelar,
 o que for consultado com frequência vira coluna.
+
+**`races.id` é UUID.** É o `race_id` do contrato D2 (REST e WebSocket) e a chave
+do motor em memória, então a API gera o id antes de gravar qualquer coisa e o
+mesmo valor vale do `POST /api/races` até o `GET .../results`. As demais tabelas
+usam inteiro; só o que sai pela API pública precisa de id opaco.
 
 **`drivers.id` substituto, `code` único.** Nas fontes históricas o código se
 repete (Michael e Mick Schumacher são `MSC`) e o nome diverge entre datasets; a

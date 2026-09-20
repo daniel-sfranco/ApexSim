@@ -71,7 +71,12 @@ def upgrade() -> None:
     )
     op.create_table(
         "races",
-        sa.Column("id", sa.Integer(), sa.Identity(always=False), nullable=False),
+        sa.Column(
+            "id",
+            postgresql.UUID(as_uuid=True),
+            server_default=sa.text("gen_random_uuid()"),
+            nullable=False,
+        ),
         sa.Column("circuit_id", sa.String(length=32), nullable=False),
         sa.Column("setup_id", sa.Integer(), nullable=True),
         sa.Column("seed", sa.BigInteger(), nullable=False),
@@ -103,7 +108,7 @@ def upgrade() -> None:
     op.create_table(
         "race_entries",
         sa.Column("id", sa.Integer(), sa.Identity(always=False), nullable=False),
-        sa.Column("race_id", sa.Integer(), nullable=False),
+        sa.Column("race_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("driver_id", sa.Integer(), nullable=False),
         sa.Column("team_id", sa.Integer(), nullable=False),
         sa.Column("grid_position", sa.Integer(), nullable=False),
@@ -168,7 +173,7 @@ def upgrade() -> None:
     op.create_table(
         "race_events",
         sa.Column("id", sa.BigInteger(), sa.Identity(always=False), nullable=False),
-        sa.Column("race_id", sa.Integer(), nullable=False),
+        sa.Column("race_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("lap_number", sa.Integer(), nullable=False),
         sa.Column("entry_id", sa.Integer(), nullable=True),
         sa.Column("event_type", sa.String(length=32), nullable=False),

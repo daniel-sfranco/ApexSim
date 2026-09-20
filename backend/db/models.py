@@ -17,6 +17,7 @@ criação de corrida ainda não está no repositório e normalizar agora forçar
 uma migration a cada ajuste dele.
 """
 
+import uuid
 from datetime import datetime
 from typing import Any
 
@@ -34,7 +35,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base
@@ -128,7 +129,14 @@ class Race(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
+    # UUID, igual ao `race_id` do contrato D2 (WebSocket e REST). O default do
+    # Python deixa a API gerar o id antes de gravar; o do banco cobre SQL cru.
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default=text("gen_random_uuid()"),
+    )
     circuit_id: Mapped[str] = mapped_column(ForeignKey("circuits.id"))
     # Se o setup for apagado a corrida continua existindo: o que valeu foi o
     # snapshot em `config`.
@@ -165,7 +173,7 @@ class RaceEntry(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, Identity(), primary_key=True)
-    race_id: Mapped[int] = mapped_column(ForeignKey("races.id", ondelete="CASCADE"))
+    race_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("races.id", ondelete="CASCADE"))
     driver_id: Mapped[int] = mapped_column(ForeignKey("drivers.id"))
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
     grid_position: Mapped[int] = mapped_column(Integer)
@@ -219,7 +227,9 @@ class RaceEvent(Base):
     __table_args__ = (CheckConstraint("lap_number >= 0", name="lap_number_nonneg"),)
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
-    race_id: Mapped[int] = mapped_column(ForeignKey("races.id", ondelete="CASCADE"), index=True)
+    race_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("races.id", ondelete="CASCADE"), index=True
+    )
     # Volta 0 = largada. Nulo em `entry_id` quando o evento é global (ex.: chuva).
     lap_number: Mapped[int] = mapped_column(Integer)
     entry_id: Mapped[int | None] = mapped_column(ForeignKey("race_entries.id", ondelete="SET NULL"))

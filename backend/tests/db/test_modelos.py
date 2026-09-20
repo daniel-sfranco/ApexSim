@@ -5,8 +5,10 @@ consiga gravar silenciosamente uma volta duplicada, um pit_time sem pit stop ou
 um composto que não existe. O erro tem que estourar na hora, alto.
 """
 
+import uuid
+
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -97,6 +99,19 @@ def test_evento_global_nao_exige_piloto_e_payload_padrao_e_vazio(session, entrad
     session.refresh(evento)
     assert evento.entry_id is None
     assert evento.payload == {}
+
+
+def test_corrida_tem_id_uuid_gerado_pela_aplicacao_e_pelo_banco(session, entrada):
+    """O `race_id` do contrato D2 é UUID: a API gera antes de gravar, e o SQL cru também."""
+    assert isinstance(entrada.race_id, uuid.UUID)
+
+    id_do_banco = session.scalar(
+        text(
+            "INSERT INTO races (circuit_id, seed, total_laps, config) "
+            "VALUES ('monza', 1, 10, '{}') RETURNING id"
+        )
+    )
+    assert isinstance(id_do_banco, uuid.UUID)
 
 
 # --- o banco recusa dado incoerente ----------------------------------------
