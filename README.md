@@ -31,10 +31,13 @@ Pronto. Verifique:
 | `make down` | Derruba os serviços |
 | `make logs` | Acompanha os logs |
 | `make seed` | Roda a ingestão de dados (geometria dos circuitos) |
+| `make migrate` | Aplica as migrations pendentes no banco de desenvolvimento |
+| `make migration m="..."` | Gera uma migration a partir das mudanças em `backend/db/models.py` |
+| `make psql` | Abre um `psql` no banco de desenvolvimento |
 | `make test` | Testes do backend |
 | `make lint` | `ruff check` + `ruff format --check` |
 | `make fmt` | Formata o código |
-| `make clean` | Derruba tudo e apaga os volumes (simula máquina limpa) |
+| `make clean` | Derruba tudo e apaga os volumes (simula máquina limpa). **Apaga também o cache do FastF1**, cuja reingestão é lenta por causa do rate limit |
 
 ## Serviços
 
@@ -42,15 +45,30 @@ Pronto. Verifique:
 |---|---|---|
 | `api` | 8000 | Python 3.11, FastAPI, uv |
 | `web` | 3000 | Node 20 — scaffold Next.js em andamento |
-| `db` | 5432 | PostgreSQL 16 |
+| `db` | 5433 (host) | PostgreSQL 16 |
 
 O cache do FastF1 fica num volume nomeado (`fastf1_cache`). Não apague sem
 motivo: a API do Jolpica tem rate limit baixo e a reingestão é lenta.
 
+## Banco de dados
+
+PostgreSQL 16, acessado com SQLAlchemy 2 e versionado com Alembic. O schema e o
+porquê de cada decisão estão em [`docs/banco-de-dados.md`](docs/banco-de-dados.md).
+
+- O `make up` aplica as migrations sozinho antes de subir a API. Depois de um
+  `git pull` que traga migration nova, basta rodar `make up` de novo.
+- Mudou `backend/db/models.py`? Rode `make migration m="o que mudou"`, **revise o
+  arquivo gerado** e commite os dois. Um teste falha se o modelo e as migrations
+  divergirem, e outro se duas pessoas criarem migration em paralelo (histórico
+  bifurcado: nesse caso rebaseie a sua sobre a mais recente).
+- Os testes de banco (`make test`) rodam num banco descartável
+  (`apexsim_test`), nunca no de desenvolvimento.
+- Do host, o banco fica em `localhost:5433` (usuário/senha/base `apexsim`).
+
 ## Estrutura
 
 ```
-backend/     API FastAPI e pipeline de dados
+backend/     API FastAPI, pipeline de dados e camada de banco (db/, migrations/)
 frontend/    Aplicação web
 circuits/    Geometria dos circuitos (contrato D3)
 data/raw/    Datasets brutos — fora do controle de versão

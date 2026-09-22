@@ -1,4 +1,4 @@
-.PHONY: up down logs seed plot test lint fmt clean
+.PHONY: up down logs seed plot migrate migration psql test lint fmt clean
 
 up:
 	docker compose up --build -d
@@ -20,6 +20,22 @@ seed:
 # reconhecível" não se automatiza, alguém precisa olhar.
 plot:
 	docker compose run --rm api python -m app.pipeline.plotar
+
+# Aplica no banco de desenvolvimento as migrations que ainda não rodaram.
+# O `make up` já faz isso sozinho; use este alvo para rodar sem subir a API.
+migrate:
+	docker compose run --rm api alembic upgrade head
+
+# Gera uma migration a partir das mudanças em backend/db/models.py.
+# Uso: make migration m="adiciona tabela de alias de pilotos"
+# Sempre revise o arquivo gerado: o autogenerate não pega tudo (ex.: renomeios).
+migration:
+	@test -n "$(m)" || (echo 'uso: make migration m="descrição da mudança"' && exit 1)
+	docker compose run --rm --user $$(id -u):$$(id -g) -e HOME=/tmp api alembic revision --autogenerate -m "$(m)"
+
+# Abre um psql no banco de desenvolvimento.
+psql:
+	docker compose exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
 
 test:
 	docker compose run --rm api pytest

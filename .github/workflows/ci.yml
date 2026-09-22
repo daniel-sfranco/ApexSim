@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
   backend:
@@ -11,6 +11,25 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
+    # Os testes de banco rodam contra um PostgreSQL real, não contra mock.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: apexsim
+          POSTGRES_PASSWORD: apexsim
+          POSTGRES_DB: apexsim
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U apexsim -d apexsim"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://apexsim:apexsim@localhost:5432/apexsim
 
     steps:
       - uses: actions/checkout@v4
