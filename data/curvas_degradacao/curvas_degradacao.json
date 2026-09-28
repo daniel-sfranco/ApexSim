@@ -1,0 +1,590 @@
+{
+  "meta": {
+    "fonte": "vanshbatra26/f1-tyre-strategy-engine-datasets (FastF1), corridas 2023-2024",
+    "unidade": "segundos de perda por volta, relativa à idade de referência",
+    "idade_referencia": 2,
+    "n_voltas_limpas": 39966,
+    "filtros": {
+      "sessao": "R",
+      "pista": "seca",
+      "compostos": [
+        "SOFT",
+        "MEDIUM",
+        "HARD"
+      ],
+      "descartadas": "volta 1, saída e entrada do box, mais lenta que 1.07x a mediana do piloto na corrida",
+      "min_voltas_por_idade": 100
+    },
+    "modelo": "tempo = base(piloto,corrida) + inclinacao(corrida)*volta + deslocamento(composto) + degradacao(composto,idade)",
+    "regra_do_cliff": "aceito só se o BIC melhorar em >= 10 e ele estiver a >= 2 voltas das pontas da faixa observada. `cliff` null significa NÃO OBSERVADO na faixa medida (até `idade_max_suportada`), não que não exista: as equipes trocam o pneu antes de chegar lá, então os dados não alcançam."
+  },
+  "compostos": {
+    "SOFT": {
+      "idade_max_suportada": 19,
+      "curva": [
+        {
+          "idade": 2,
+          "perda_s": 0.0,
+          "erro_padrao_s": 0.0,
+          "n_voltas": 172
+        },
+        {
+          "idade": 3,
+          "perda_s": -0.1443,
+          "erro_padrao_s": 0.1284,
+          "n_voltas": 168
+        },
+        {
+          "idade": 4,
+          "perda_s": -0.0882,
+          "erro_padrao_s": 0.1499,
+          "n_voltas": 182
+        },
+        {
+          "idade": 5,
+          "perda_s": 0.0028,
+          "erro_padrao_s": 0.1799,
+          "n_voltas": 250
+        },
+        {
+          "idade": 6,
+          "perda_s": 0.1132,
+          "erro_padrao_s": 0.1671,
+          "n_voltas": 244
+        },
+        {
+          "idade": 7,
+          "perda_s": 0.1888,
+          "erro_padrao_s": 0.1684,
+          "n_voltas": 255
+        },
+        {
+          "idade": 8,
+          "perda_s": 0.2113,
+          "erro_padrao_s": 0.1643,
+          "n_voltas": 251
+        },
+        {
+          "idade": 9,
+          "perda_s": 0.2318,
+          "erro_padrao_s": 0.1742,
+          "n_voltas": 243
+        },
+        {
+          "idade": 10,
+          "perda_s": 0.2665,
+          "erro_padrao_s": 0.1797,
+          "n_voltas": 235
+        },
+        {
+          "idade": 11,
+          "perda_s": 0.3268,
+          "erro_padrao_s": 0.1921,
+          "n_voltas": 228
+        },
+        {
+          "idade": 12,
+          "perda_s": 0.4753,
+          "erro_padrao_s": 0.181,
+          "n_voltas": 217
+        },
+        {
+          "idade": 13,
+          "perda_s": 0.5834,
+          "erro_padrao_s": 0.1837,
+          "n_voltas": 205
+        },
+        {
+          "idade": 14,
+          "perda_s": 0.6913,
+          "erro_padrao_s": 0.2119,
+          "n_voltas": 185
+        },
+        {
+          "idade": 15,
+          "perda_s": 0.6973,
+          "erro_padrao_s": 0.2009,
+          "n_voltas": 163
+        },
+        {
+          "idade": 16,
+          "perda_s": 0.7383,
+          "erro_padrao_s": 0.2084,
+          "n_voltas": 144
+        },
+        {
+          "idade": 17,
+          "perda_s": 0.7724,
+          "erro_padrao_s": 0.212,
+          "n_voltas": 130
+        },
+        {
+          "idade": 18,
+          "perda_s": 0.8875,
+          "erro_padrao_s": 0.2385,
+          "n_voltas": 122
+        },
+        {
+          "idade": 19,
+          "perda_s": 0.8861,
+          "erro_padrao_s": 0.233,
+          "n_voltas": 106
+        }
+      ],
+      "parametros": {
+        "k1_quad": 0.002412,
+        "k2_lin": 0.008639,
+        "cliff": null
+      },
+      "qualidade": {
+        "k1_no_limite_inferior": false,
+        "rmse_s": 0.0771667818663508,
+        "qui2_por_gl_quadratico": 0.25438169200718136,
+        "bic_quadratico": 9.482152068220152,
+        "bic_com_cliff": 16.86739946671388
+      }
+    },
+    "MEDIUM": {
+      "idade_max_suportada": 29,
+      "curva": [
+        {
+          "idade": 2,
+          "perda_s": 0.0,
+          "erro_padrao_s": 0.0,
+          "n_voltas": 604
+        },
+        {
+          "idade": 3,
+          "perda_s": -0.1689,
+          "erro_padrao_s": 0.0694,
+          "n_voltas": 656
+        },
+        {
+          "idade": 4,
+          "perda_s": -0.1499,
+          "erro_padrao_s": 0.0898,
+          "n_voltas": 700
+        },
+        {
+          "idade": 5,
+          "perda_s": -0.1007,
+          "erro_padrao_s": 0.1047,
+          "n_voltas": 760
+        },
+        {
+          "idade": 6,
+          "perda_s": -0.0799,
+          "erro_padrao_s": 0.1129,
+          "n_voltas": 770
+        },
+        {
+          "idade": 7,
+          "perda_s": -0.0207,
+          "erro_padrao_s": 0.1221,
+          "n_voltas": 764
+        },
+        {
+          "idade": 8,
+          "perda_s": 0.0274,
+          "erro_padrao_s": 0.1197,
+          "n_voltas": 743
+        },
+        {
+          "idade": 9,
+          "perda_s": 0.1146,
+          "erro_padrao_s": 0.1283,
+          "n_voltas": 729
+        },
+        {
+          "idade": 10,
+          "perda_s": 0.2107,
+          "erro_padrao_s": 0.126,
+          "n_voltas": 700
+        },
+        {
+          "idade": 11,
+          "perda_s": 0.2469,
+          "erro_padrao_s": 0.1242,
+          "n_voltas": 673
+        },
+        {
+          "idade": 12,
+          "perda_s": 0.2792,
+          "erro_padrao_s": 0.1228,
+          "n_voltas": 638
+        },
+        {
+          "idade": 13,
+          "perda_s": 0.3708,
+          "erro_padrao_s": 0.1214,
+          "n_voltas": 602
+        },
+        {
+          "idade": 14,
+          "perda_s": 0.4261,
+          "erro_padrao_s": 0.121,
+          "n_voltas": 555
+        },
+        {
+          "idade": 15,
+          "perda_s": 0.4572,
+          "erro_padrao_s": 0.1208,
+          "n_voltas": 537
+        },
+        {
+          "idade": 16,
+          "perda_s": 0.535,
+          "erro_padrao_s": 0.1305,
+          "n_voltas": 505
+        },
+        {
+          "idade": 17,
+          "perda_s": 0.6464,
+          "erro_padrao_s": 0.1511,
+          "n_voltas": 464
+        },
+        {
+          "idade": 18,
+          "perda_s": 0.6259,
+          "erro_padrao_s": 0.1414,
+          "n_voltas": 399
+        },
+        {
+          "idade": 19,
+          "perda_s": 0.6276,
+          "erro_padrao_s": 0.1501,
+          "n_voltas": 372
+        },
+        {
+          "idade": 20,
+          "perda_s": 0.6983,
+          "erro_padrao_s": 0.1614,
+          "n_voltas": 315
+        },
+        {
+          "idade": 21,
+          "perda_s": 0.6745,
+          "erro_padrao_s": 0.1502,
+          "n_voltas": 288
+        },
+        {
+          "idade": 22,
+          "perda_s": 0.7698,
+          "erro_padrao_s": 0.147,
+          "n_voltas": 264
+        },
+        {
+          "idade": 23,
+          "perda_s": 0.7827,
+          "erro_padrao_s": 0.1591,
+          "n_voltas": 237
+        },
+        {
+          "idade": 24,
+          "perda_s": 0.8328,
+          "erro_padrao_s": 0.1539,
+          "n_voltas": 220
+        },
+        {
+          "idade": 25,
+          "perda_s": 0.8528,
+          "erro_padrao_s": 0.1592,
+          "n_voltas": 198
+        },
+        {
+          "idade": 26,
+          "perda_s": 0.8785,
+          "erro_padrao_s": 0.1882,
+          "n_voltas": 171
+        },
+        {
+          "idade": 27,
+          "perda_s": 0.9028,
+          "erro_padrao_s": 0.1891,
+          "n_voltas": 149
+        },
+        {
+          "idade": 28,
+          "perda_s": 0.9142,
+          "erro_padrao_s": 0.2011,
+          "n_voltas": 127
+        },
+        {
+          "idade": 29,
+          "perda_s": 0.966,
+          "erro_padrao_s": 0.2208,
+          "n_voltas": 101
+        }
+      ],
+      "parametros": {
+        "k1_quad": 0.000847,
+        "k2_lin": 0.015558,
+        "cliff": null
+      },
+      "qualidade": {
+        "k1_no_limite_inferior": false,
+        "rmse_s": 0.10673693130077204,
+        "qui2_por_gl_quadratico": 0.9858728701324262,
+        "bic_quadratico": 31.238495485319312,
+        "bic_com_cliff": 29.35818335845122
+      }
+    },
+    "HARD": {
+      "idade_max_suportada": 41,
+      "curva": [
+        {
+          "idade": 2,
+          "perda_s": 0.0,
+          "erro_padrao_s": 0.0,
+          "n_voltas": 627
+        },
+        {
+          "idade": 3,
+          "perda_s": 0.1033,
+          "erro_padrao_s": 0.0435,
+          "n_voltas": 721
+        },
+        {
+          "idade": 4,
+          "perda_s": 0.1952,
+          "erro_padrao_s": 0.0621,
+          "n_voltas": 783
+        },
+        {
+          "idade": 5,
+          "perda_s": 0.239,
+          "erro_padrao_s": 0.0596,
+          "n_voltas": 819
+        },
+        {
+          "idade": 6,
+          "perda_s": 0.2921,
+          "erro_padrao_s": 0.0633,
+          "n_voltas": 825
+        },
+        {
+          "idade": 7,
+          "perda_s": 0.2815,
+          "erro_padrao_s": 0.0717,
+          "n_voltas": 842
+        },
+        {
+          "idade": 8,
+          "perda_s": 0.3934,
+          "erro_padrao_s": 0.0779,
+          "n_voltas": 848
+        },
+        {
+          "idade": 9,
+          "perda_s": 0.4327,
+          "erro_padrao_s": 0.0881,
+          "n_voltas": 856
+        },
+        {
+          "idade": 10,
+          "perda_s": 0.4686,
+          "erro_padrao_s": 0.0897,
+          "n_voltas": 835
+        },
+        {
+          "idade": 11,
+          "perda_s": 0.4933,
+          "erro_padrao_s": 0.0947,
+          "n_voltas": 828
+        },
+        {
+          "idade": 12,
+          "perda_s": 0.5605,
+          "erro_padrao_s": 0.0921,
+          "n_voltas": 829
+        },
+        {
+          "idade": 13,
+          "perda_s": 0.653,
+          "erro_padrao_s": 0.0887,
+          "n_voltas": 826
+        },
+        {
+          "idade": 14,
+          "perda_s": 0.704,
+          "erro_padrao_s": 0.0978,
+          "n_voltas": 814
+        },
+        {
+          "idade": 15,
+          "perda_s": 0.7966,
+          "erro_padrao_s": 0.0935,
+          "n_voltas": 799
+        },
+        {
+          "idade": 16,
+          "perda_s": 0.8082,
+          "erro_padrao_s": 0.098,
+          "n_voltas": 776
+        },
+        {
+          "idade": 17,
+          "perda_s": 0.8635,
+          "erro_padrao_s": 0.104,
+          "n_voltas": 747
+        },
+        {
+          "idade": 18,
+          "perda_s": 0.9464,
+          "erro_padrao_s": 0.1063,
+          "n_voltas": 702
+        },
+        {
+          "idade": 19,
+          "perda_s": 0.9705,
+          "erro_padrao_s": 0.1028,
+          "n_voltas": 673
+        },
+        {
+          "idade": 20,
+          "perda_s": 1.038,
+          "erro_padrao_s": 0.102,
+          "n_voltas": 636
+        },
+        {
+          "idade": 21,
+          "perda_s": 1.0435,
+          "erro_padrao_s": 0.1074,
+          "n_voltas": 601
+        },
+        {
+          "idade": 22,
+          "perda_s": 1.0795,
+          "erro_padrao_s": 0.1059,
+          "n_voltas": 564
+        },
+        {
+          "idade": 23,
+          "perda_s": 1.1954,
+          "erro_padrao_s": 0.1152,
+          "n_voltas": 523
+        },
+        {
+          "idade": 24,
+          "perda_s": 1.2431,
+          "erro_padrao_s": 0.1194,
+          "n_voltas": 482
+        },
+        {
+          "idade": 25,
+          "perda_s": 1.2525,
+          "erro_padrao_s": 0.1233,
+          "n_voltas": 457
+        },
+        {
+          "idade": 26,
+          "perda_s": 1.2684,
+          "erro_padrao_s": 0.118,
+          "n_voltas": 434
+        },
+        {
+          "idade": 27,
+          "perda_s": 1.4067,
+          "erro_padrao_s": 0.124,
+          "n_voltas": 404
+        },
+        {
+          "idade": 28,
+          "perda_s": 1.3489,
+          "erro_padrao_s": 0.1296,
+          "n_voltas": 368
+        },
+        {
+          "idade": 29,
+          "perda_s": 1.3576,
+          "erro_padrao_s": 0.125,
+          "n_voltas": 347
+        },
+        {
+          "idade": 30,
+          "perda_s": 1.3679,
+          "erro_padrao_s": 0.1199,
+          "n_voltas": 312
+        },
+        {
+          "idade": 31,
+          "perda_s": 1.3989,
+          "erro_padrao_s": 0.1319,
+          "n_voltas": 297
+        },
+        {
+          "idade": 32,
+          "perda_s": 1.4446,
+          "erro_padrao_s": 0.1316,
+          "n_voltas": 276
+        },
+        {
+          "idade": 33,
+          "perda_s": 1.4424,
+          "erro_padrao_s": 0.1299,
+          "n_voltas": 239
+        },
+        {
+          "idade": 34,
+          "perda_s": 1.4587,
+          "erro_padrao_s": 0.1369,
+          "n_voltas": 217
+        },
+        {
+          "idade": 35,
+          "perda_s": 1.4983,
+          "erro_padrao_s": 0.1351,
+          "n_voltas": 201
+        },
+        {
+          "idade": 36,
+          "perda_s": 1.5859,
+          "erro_padrao_s": 0.1406,
+          "n_voltas": 187
+        },
+        {
+          "idade": 37,
+          "perda_s": 1.5889,
+          "erro_padrao_s": 0.1522,
+          "n_voltas": 171
+        },
+        {
+          "idade": 38,
+          "perda_s": 1.623,
+          "erro_padrao_s": 0.1414,
+          "n_voltas": 159
+        },
+        {
+          "idade": 39,
+          "perda_s": 1.7753,
+          "erro_padrao_s": 0.1756,
+          "n_voltas": 139
+        },
+        {
+          "idade": 40,
+          "perda_s": 1.7379,
+          "erro_padrao_s": 0.1747,
+          "n_voltas": 124
+        },
+        {
+          "idade": 41,
+          "perda_s": 1.9243,
+          "erro_padrao_s": 0.2118,
+          "n_voltas": 112
+        }
+      ],
+      "parametros": {
+        "k1_quad": 0.0,
+        "k2_lin": 0.051181,
+        "cliff": null
+      },
+      "qualidade": {
+        "k1_no_limite_inferior": true,
+        "rmse_s": 0.11124419449244034,
+        "qui2_por_gl_quadratico": 1.018086358600697,
+        "bic_quadratico": 44.99631856048508,
+        "bic_com_cliff": 26.444643688297795
+      }
+    }
+  }
+}
