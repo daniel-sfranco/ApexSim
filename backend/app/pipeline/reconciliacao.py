@@ -7,6 +7,7 @@ corresponde:
 - `circuitos.csv`: nome do GP em cada fonte -> slug do circuito (`interlagos`).
 - `pilotos.csv`: (temporada, código de 3 letras) -> piloto do histórico.
 - `compostos.csv`: composto de cada fonte -> código do banco (ou descarte).
+- `equipes.csv`: equipes de cada temporada, com os pilotos que correram por elas.
 - `sobreposicao_fontes.csv`: quanto do `alexjr2001` já está no dataset de pneus.
 
 Por que a chave do piloto é (temporada, código) e não só o código: o código FIA
@@ -152,6 +153,24 @@ def mapear_pilotos(
         ]
     ]
     return tabela.sort_values(["temporada", "codigo"]).reset_index(drop=True), sem_correspondencia
+
+
+def mapear_equipes(pneus: pd.DataFrame) -> pd.DataFrame:
+    """Equipes que largaram alguma corrida, por temporada, com os pilotos de cada uma.
+
+    O nome é o do FastF1 ("Haas F1 Team", "RB"). Ele muda entre temporadas
+    (Alfa Romeo virou Kick Sauber, AlphaTauri virou RB) e esta tabela NÃO tenta
+    ligar as duas pontas: o seed só usa uma temporada, então não há o que
+    reconciliar ainda.
+    """
+    corrida = pneus[(pneus["Sessao"] == SESSAO_CORRIDA)].dropna(subset=["Team"])
+    tabela = (
+        corrida.groupby(["Ano", "Team"])
+        .agg(pilotos=("Driver", lambda s: ";".join(sorted(set(s)))), n_voltas=("Driver", "size"))
+        .reset_index()
+        .rename(columns={"Ano": "temporada", "Team": "equipe"})
+    )
+    return tabela.sort_values(["temporada", "equipe"]).reset_index(drop=True)
 
 
 def mapear_compostos(observados: pd.DataFrame) -> pd.DataFrame:
@@ -314,6 +333,7 @@ def gerar(saida: Path = MAPEAMENTOS_DIR) -> dict[str, int]:
         ]
     )
     compostos = mapear_compostos(observados)
+    equipes = mapear_equipes(pneus)
     sobreposicao = verificar_sobreposicao(pneus, alexjr)
 
     saida.mkdir(parents=True, exist_ok=True)
@@ -321,6 +341,7 @@ def gerar(saida: Path = MAPEAMENTOS_DIR) -> dict[str, int]:
         ("circuitos", circuitos),
         ("pilotos", pilotos),
         ("compostos", compostos),
+        ("equipes", equipes),
         ("sobreposicao_fontes", sobreposicao),
     ):
         tabela.to_csv(saida / f"{nome}.csv", index=False, lineterminator="\n")
@@ -329,6 +350,7 @@ def gerar(saida: Path = MAPEAMENTOS_DIR) -> dict[str, int]:
     resumo = {
         "circuitos": len(circuitos),
         "circuitos_no_projeto": int(circuitos["no_projeto"].sum()),
+        "equipes": len(equipes),
         "pilotos_mapeados": len(pilotos),
         "pilotos_com_codigo_repetido_no_historico": int(
             (pilotos["codigo_repetido_com"] != "").sum()

@@ -30,7 +30,8 @@ Pronto. Verifique:
 | `make up` | Sobe api, web e banco |
 | `make down` | Derruba os serviços |
 | `make logs` | Acompanha os logs |
-| `make seed` | Roda a ingestão de dados (geometria dos circuitos) |
+| `make seed` | Popula o banco com a referência (compostos, circuitos, grid de 2024). Idempotente |
+| `make circuitos` | Regenera a geometria dos circuitos (D3) a partir do FastF1: precisa de rede |
 | `make kaggle` | Baixa os datasets do Kaggle para `data/raw/` (precisa de `KAGGLE_API_TOKEN` no `.env`) |
 | `make dados` | Reconcilia as fontes e gera as curvas de degradação ([`docs/dados-kaggle.md`](docs/dados-kaggle.md)) |
 | `make migrate` | Aplica as migrations pendentes no banco de desenvolvimento |

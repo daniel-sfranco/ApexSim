@@ -109,6 +109,11 @@ PASTA_VOLTAS_ALEXJR = (
 # (as voltas coincidem com as do dataset de pneus — ver `sobreposicao_fontes.csv`).
 TEMPORADAS_PNEUS = (2023, 2024)
 
+# Temporada cujo grid vira piloto e equipe no banco (`make seed`). O código FIA
+# se repete no histórico, então o seed carrega uma temporada só; dentro dela
+# ele é único (`drivers.code` é UNIQUE).
+TEMPORADA_DO_SEED = 2024
+
 # Tradução do valor de composto de cada fonte para o código do banco. `None`
 # significa "descartar a volta": o composto é desconhecido e não dá para
 # atribuí-la a nenhuma curva. Um valor que não estiver aqui derruba a

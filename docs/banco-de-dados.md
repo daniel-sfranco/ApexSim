@@ -115,8 +115,40 @@ errada. Todas estão cobertas em `backend/tests/db/test_modelos.py`.
 convenção de nomes no `MetaData`: sem isso o PostgreSQL inventa nomes que variam
 entre máquinas e o Alembic não consegue dropar/alterar de forma reprodutível.
 
-## Próximos passos (já previstos)
+## Seed (`make seed`)
 
-- **Semana 4:** tabelas de alias para reconciliar nomes de pilotos, códigos de
-  circuito e compostos entre as fontes, e a tabela das curvas de degradação (D5).
-- **Semana 5:** seed idempotente e camada de repositório com testes de integração.
+Popula as tabelas de referência a partir de `data/mapeamentos/` (gerado por
+`make dados`) e da lista de circuitos do projeto. O `make up` já roda o seed
+sozinho depois das migrations.
+
+| Tabela | O que entra | Fonte |
+|---|---|---|
+| `tyre_compounds` | SOFT, MEDIUM, HARD, INTERMEDIATE, WET (os "desconhecidos" ficam de fora) | `compostos.csv` |
+| `circuits` | só os 3 do projeto, com o comprimento oficial | `circuitos.csv` + `app/config.py` |
+| `drivers` | os 24 pilotos que correram em 2024 (com os substitutos) | `pilotos.csv` |
+| `teams` | as 10 equipes de 2024, com o nome do FastF1 | `equipes.csv` |
+
+- **Idempotente**: rodar de novo não duplica, não gasta ids da sequência e corrige
+  o que mudou nos CSVs. **Nunca apaga**: uma linha que saiu do CSV continua no banco.
+- **Uma temporada só** (`TEMPORADA_DO_SEED`), porque `drivers.code` é UNIQUE e o
+  código FIA se repete no histórico (VER também foi o Vergne). São 24 pilotos, e o
+  grid de 20 de cada corrida é escolhido na tela de Setup.
+- Os nomes de equipe mudam entre temporadas (Alfa Romeo virou Kick Sauber,
+  AlphaTauri virou RB). Isso só vira problema ao carregar mais de uma temporada.
+
+## Repositório (`db/repositorio.py`)
+
+Traduz o que o motor e a API falam (código FIA, slug, nome da equipe) para as
+chaves do banco, sem dar commit:
+
+- `criar_corrida(...)`: cria a corrida e as inscrições do grid. Se um circuito,
+  piloto ou equipe não existir, falha **antes de gravar** (`ReferenciaDesconhecida`).
+- `mapa_entradas(session, race_id)`: código FIA -> `race_entries.id`. O motor chama
+  uma vez por corrida e reaproveita o mapa ao gravar as voltas em lote (semana 7).
+
+## Próximos passos
+
+- **Semana 7:** gravar `lap_records` e `race_events` em lote, uma vez por volta.
+  O driver é síncrono e o motor é `async`: chamar via `asyncio.to_thread`.
+- **Semana 8:** endpoint `/api/races/{id}/results`.
+- **Quando houver mais de uma temporada:** reconciliar os nomes de equipe entre elas.
