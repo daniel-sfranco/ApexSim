@@ -31,6 +31,8 @@ Pronto. Verifique:
 | `make down` | Derruba os serviços |
 | `make logs` | Acompanha os logs |
 | `make seed` | Roda a ingestão de dados (geometria dos circuitos) |
+| `make kaggle` | Baixa os datasets do Kaggle para `data/raw/` (precisa de `KAGGLE_API_TOKEN` no `.env`) |
+| `make dados` | Reconcilia as fontes e gera as curvas de degradação ([`docs/dados-kaggle.md`](docs/dados-kaggle.md)) |
 | `make migrate` | Aplica as migrations pendentes no banco de desenvolvimento |
 | `make migration m="..."` | Gera uma migration a partir das mudanças em `backend/db/models.py` |
 | `make psql` | Abre um `psql` no banco de desenvolvimento |
@@ -72,6 +74,7 @@ backend/     API FastAPI, pipeline de dados e camada de banco (db/, migrations/)
 frontend/    Aplicação web
 circuits/    Geometria dos circuitos (contrato D3)
 data/raw/    Datasets brutos — fora do controle de versão
+data/mapeamentos/, data/curvas_degradacao/   Saídas da ingestão (versionadas)
 docs/        Documentação técnica por trilha
 ```
 

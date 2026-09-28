@@ -28,11 +28,15 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-apexsim}:${POSTGRES_PASSWORD:-apexsim}@db:5432/${POSTGRES_DB:-apexsim}
       FASTF1_CACHE_DIR: /cache/fastf1
+      # Token do Kaggle, só para `make kaggle`. Vem do .env (fora do git).
+      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
       - ./circuits:/circuits
+      # Datasets brutos (fora do git), mapeamentos e curvas (versionados).
+      - ./data:/data
       - fastf1_cache:/cache/fastf1
     depends_on:
       db:
