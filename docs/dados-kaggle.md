@@ -36,14 +36,14 @@ virar dado silenciosamente errado.
   temporadas.
 - **Pilotos** (`pilotos.csv`, 46 pares temporada + código): a chave é
   **(temporada, código)**, não só o código, porque o código FIA se repete no
-  histórico. Em 2023-2024, 7 códigos são compartilhados com pilotos de outras
-  épocas: `VER` é também o Vergne, `ALB` o Albers, `MAG` o Jan Magnussen, `DOO` o
-  Doornbos, e assim por diante. Dentro de uma temporada o código é único, e isso
-  é verificado. Os 23 códigos que só aparecem em treino livre (pilotos reserva)
+  histórico: 7 códigos são repetidos (`VER`, `ALB`, `MAG`, `DOO`, `MSC`, `BIA`,
+  `HAR`). Quatro deles afetam pilotos de 2023-2024, em 7 pares (temporada,
+  piloto): `VER` é também o Vergne, `ALB` o Albers, `MAG` o Jan Magnussen e `DOO`
+  o Doornbos. Dentro de uma temporada o código é único, e isso é verificado. Os 23 códigos que só aparecem em treino livre (pilotos reserva)
   ficam fora.
 - **Compostos** (`compostos.csv`): os cinco compostos oficiais viram o código da
-  tabela `tyre_compounds`. `UNKNOWN` e `TEST_UNKNOWN` (289 voltas, pneus de teste
-  da Pirelli) são descartados. `chave_fisica` é o nome em minúsculas usado no
+  tabela `tyre_compounds`. `UNKNOWN` e `TEST_UNKNOWN` (289 voltas, compostos que o
+  FastF1 não identifica) são descartados. `chave_fisica` é o nome em minúsculas usado no
   `physics.py`.
 - **Sobreposição** (`sobreposicao_fontes.csv`): duas divergências achadas e
   registradas:
