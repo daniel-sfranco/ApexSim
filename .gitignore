@@ -20,3 +20,6 @@ __pycache__/
 # Node
 node_modules/
 .next/
+
+# Arquivos temporários do NFS (surgem ao apagar arquivo aberto em home de rede)
+.nfs*
