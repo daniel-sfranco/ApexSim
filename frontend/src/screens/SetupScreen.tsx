@@ -1,13 +1,11 @@
-"use client";
-
 import React from "react";
-import Link from "next/link";
+import { Link } from "react-router-dom";
 import { SetupForm } from "@/components/SetupForm";
-import { Flag, Activity } from "lucide-react";
+import { Activity } from "lucide-react";
 
-export default function SetupPage() {
+export const SetupScreen: React.FC = () => {
   return (
-    <div className="min-h-screen bg-f1-dark text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-f1-dark text-slate-100 flex flex-col font-sans">
       {/* Top Header */}
       <header className="border-b border-f1-border bg-f1-surface px-6 py-4 shadow-md">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -25,7 +23,7 @@ export default function SetupPage() {
 
           <div className="flex items-center gap-4 text-xs font-mono">
             <Link
-              href="/race/live"
+              to="/race/live"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-f1-card hover:bg-f1-border border border-f1-border text-slate-300 hover:text-white transition-colors"
             >
               <Activity className="w-3.5 h-3.5 text-emerald-400" />
@@ -55,4 +53,4 @@ export default function SetupPage() {
       </footer>
     </div>
   );
-}
+};

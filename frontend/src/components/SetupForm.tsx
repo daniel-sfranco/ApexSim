@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router-dom";
 import { useRaceStore } from "@/store/raceStore";
 import { CIRCUITS, DEFAULT_DRIVERS, TYRE_INFO } from "@/lib/constants";
 import { TyreCompound, WeatherCondition } from "@/types";
@@ -10,14 +10,12 @@ import {
   ChevronDown,
   Flag,
   CloudSun,
-  Flame,
   Settings2,
-  Gauge,
   ArrowRight,
 } from "lucide-react";
 
 export const SetupForm: React.FC = () => {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { config, setRaceConfig, reorderGrid, resetRace } = useRaceStore();
 
   const [selectedCircuit, setSelectedCircuit] = useState(config.circuitId);
@@ -97,7 +95,7 @@ export const SetupForm: React.FC = () => {
     // Tentar criar corrida no backend se disponível
     const raceId = "race-" + Math.random().toString(36).substring(2, 9);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const apiUrl = (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
       await fetch(`${apiUrl}/api/races`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -111,10 +109,10 @@ export const SetupForm: React.FC = () => {
         }),
       }).catch(() => null);
     } catch {
-      // Falha silenciosa no mock (conforme arquitetura M1 de independência de trilhas)
+      // Fallback gracioso
     }
 
-    router.push(`/race/${raceId}`);
+    navigate(`/race/${raceId}`);
   };
 
   return (

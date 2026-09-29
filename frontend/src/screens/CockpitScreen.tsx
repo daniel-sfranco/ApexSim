@@ -1,8 +1,5 @@
-"use client";
-
 import React from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import { Link, useParams } from "react-router-dom";
 import { useRaceWebSocket } from "@/hooks/useRaceWebSocket";
 import { useRaceStore } from "@/store/raceStore";
 import { RaceTopBar } from "@/components/RaceTopBar";
@@ -10,9 +7,9 @@ import { TimingTower } from "@/components/TimingTower";
 import { EventFeed } from "@/components/EventFeed";
 import { Trophy, ArrowLeft, RefreshCw, AlertCircle } from "lucide-react";
 
-export default function RaceCockpitPage() {
-  const params = useParams();
-  const raceId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string) || "live";
+export const CockpitScreen: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  const raceId = id || "live";
 
   const {
     togglePause,
@@ -22,7 +19,6 @@ export default function RaceCockpitPage() {
 
   const {
     config,
-    currentLapData,
     drivers,
     isFinished,
     connectionStatus,
@@ -39,7 +35,7 @@ export default function RaceCockpitPage() {
         onRestart={() => restart(config.totalLaps, config.circuitId)}
       />
 
-      {/* Alerta de Desconexão (Requisito M2 do Roadmap) */}
+      {/* Alerta de Desconexão (Requisito do Roadmap) */}
       {connectionStatus === "disconnected" && (
         <div className="bg-rose-950/80 border-b border-rose-800 text-rose-300 px-4 py-2 text-xs font-mono flex items-center justify-center gap-2">
           <AlertCircle className="w-4 h-4 text-rose-400" />
@@ -66,7 +62,7 @@ export default function RaceCockpitPage() {
             </div>
 
             <Link
-              href="/setup"
+              to="/setup"
               className="px-4 py-1.5 rounded bg-f1-red hover:bg-red-700 text-white font-mono text-xs font-bold transition-all shadow"
             >
               Nova Corrida
@@ -127,7 +123,7 @@ export default function RaceCockpitPage() {
 
             <div className="mt-4 pt-3 border-t border-f1-border/60 flex items-center justify-between">
               <Link
-                href="/setup"
+                to="/setup"
                 className="flex items-center gap-1.5 text-xs text-f1-muted hover:text-white transition-colors"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
@@ -152,4 +148,4 @@ export default function RaceCockpitPage() {
       </main>
     </div>
   );
-}
+};

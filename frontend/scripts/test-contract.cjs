@@ -6,7 +6,7 @@ const assert = require("assert");
 console.log("▶ Iniciando teste de validação do Mock Server e Contrato D2...");
 
 const TEST_PORT = 8089;
-const server = spawn("node", ["scripts/mock-server.js"], {
+const server = spawn("node", ["scripts/mock-server.cjs"], {
   env: { ...process.env, MOCK_PORT: TEST_PORT },
 });
 

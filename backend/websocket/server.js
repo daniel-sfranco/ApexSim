@@ -2,7 +2,7 @@
 // Sincronizado com frontend/scripts/mock-server.js
 
 const path = require('path');
-const mockScript = path.resolve(__dirname, '../../frontend/scripts/mock-server.js');
+const mockScript = path.resolve(__dirname, '../../frontend/scripts/mock-server.cjs');
 
 try {
   require(mockScript);
