@@ -114,4 +114,3 @@ class TrackMap:
         """Retorna True se a coordenada linear está dentro do pit lane."""
         d = distance_m % self.length_m if self.length_m > 0 else distance_m
         return any(z.type == "pit_lane" and z.contains(d) for z in self.zones)
-
