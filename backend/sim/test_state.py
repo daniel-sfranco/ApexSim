@@ -21,7 +21,8 @@ Rodar com:
 from dataclasses import FrozenInstanceError
 
 import pytest
-from state import (
+
+from sim.state import (
     DriverState,
     LapResult,
     PitStatus,
