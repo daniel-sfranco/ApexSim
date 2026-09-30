@@ -21,6 +21,7 @@ from app.config import (
 COLUNAS_PNEUS = [
     "GP",
     "Driver",
+    "Team",
     "Stint",
     "LapNumber",
     "Compound",
@@ -42,7 +43,7 @@ def carregar_voltas_pneus(
 ) -> pd.DataFrame:
     """Voltas do dataset de pneus (`vanshbatra26`), todas as sessões, 2023 e 2024.
 
-    Colunas: Ano, Sessao, GP, Driver, Stint, LapNumber, Compound, TyreLife,
+    Colunas: Ano, Sessao, GP, Driver, Team, Stint, LapNumber, Compound, TyreLife,
     LapTime, Chuva. `Sessao` é NaN nas linhas em que o dataset não a informa
     (2.155 linhas do GP de Abu Dhabi de 2023); elas nunca são tratadas como
     corrida.

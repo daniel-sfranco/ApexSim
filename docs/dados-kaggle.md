@@ -41,6 +41,9 @@ virar dado silenciosamente errado.
   piloto): `VER` é também o Vergne, `ALB` o Albers, `MAG` o Jan Magnussen e `DOO`
   o Doornbos. Dentro de uma temporada o código é único, e isso é verificado. Os 23 códigos que só aparecem em treino livre (pilotos reserva)
   ficam fora.
+- **Equipes** (`equipes.csv`): as equipes de cada temporada com os pilotos que
+  correram por elas, usando o nome do FastF1. O Bearman aparece em duas em 2024
+  (Ferrari e Haas). Os nomes mudam entre temporadas e a tabela não os liga.
 - **Compostos** (`compostos.csv`): os cinco compostos oficiais viram o código da
   tabela `tyre_compounds`. `UNKNOWN` e `TEST_UNKNOWN` (289 voltas, compostos que o
   FastF1 não identifica) são descartados. `chave_fisica` é o nome em minúsculas usado no

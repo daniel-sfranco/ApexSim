@@ -70,8 +70,8 @@ def circuito(request):
 
 
 def test_ha_circuitos_para_validar():
-    """Guarda contra um `make seed` que não gerou nada e passaria despercebido."""
-    assert CIRCUITOS_GERADOS, "nenhum JSON em circuits/ — rode `make seed`"
+    """Guarda contra um `make circuitos` que não gerou nada e passaria despercebido."""
+    assert CIRCUITOS_GERADOS, "nenhum JSON em circuits/ — rode `make circuitos`"
 
 
 def test_schema_do_contrato(circuito):

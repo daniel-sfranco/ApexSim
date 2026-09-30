@@ -11,6 +11,7 @@ from app.pipeline.reconciliacao import (
     ReconciliacaoInconsistente,
     mapear_circuitos,
     mapear_compostos,
+    mapear_equipes,
     mapear_pilotos,
     verificar_sobreposicao,
 )
@@ -159,3 +160,21 @@ def test_sobreposicao_ignora_treinos_e_mede_divergencia_de_composto():
     assert linha["achadas_em_pneus"] == 1
     assert linha["composto_igual"] == 0
     assert linha["pct_composto_diverge"] == 100.0
+
+
+def test_equipes_por_temporada_ignoram_treino_e_listam_pilotos():
+    pneus = pd.DataFrame(
+        {
+            "Ano": [2024, 2024, 2024, 2024, 2023],
+            "Sessao": ["R", "R", "R", "FP1", "R"],
+            "Team": ["Ferrari", "Ferrari", "Haas F1 Team", "Equipe de Treino", "AlphaTauri"],
+            "Driver": ["LEC", "SAI", "MAG", "XXX", "TSU"],
+        }
+    )
+
+    tabela = mapear_equipes(pneus).set_index(["temporada", "equipe"])
+
+    assert tabela.loc[(2024, "Ferrari"), "pilotos"] == "LEC;SAI"
+    assert tabela.loc[(2024, "Ferrari"), "n_voltas"] == 2
+    assert (2024, "Equipe de Treino") not in tabela.index
+    assert (2023, "AlphaTauri") in tabela.index
