@@ -1,0 +1,8 @@
+valor_fonte,codigo_banco,chave_fisica,nome_pt,acao,fontes,n_voltas
+HARD,HARD,hard,Duro,mapeado,alexjr;pneus,41137
+INTERMEDIATE,INTERMEDIATE,intermediate,Intermediário,mapeado,alexjr;pneus,6649
+MEDIUM,MEDIUM,medium,Médio,mapeado,alexjr;pneus,33206
+SOFT,SOFT,soft,Macio,mapeado,alexjr;pneus,22460
+TEST_UNKNOWN,,,,descartado,pneus,244
+UNKNOWN,,,,descartado,pneus,45
+WET,WET,wet,Chuva,mapeado,alexjr;pneus,222
