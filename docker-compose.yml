@@ -22,9 +22,15 @@ services:
 
   api:
     build: ./backend
+    # Migrations e seed antes da API: quem dá `git pull` e `make up` sempre sobe com
+    # o schema atualizado e a referência (pilotos, equipes...) carregada, e os bancos
+    # locais do grupo não divergem. O seed é idempotente, então repetir é barato.
+    command: sh -c "alembic upgrade head && python -m db.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-apexsim}:${POSTGRES_PASSWORD:-apexsim}@db:5432/${POSTGRES_DB:-apexsim}
       FASTF1_CACHE_DIR: /cache/fastf1
+      # Token do Kaggle, só para `make kaggle`. Vem do .env (fora do git).
+      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
     ports:
       - "8000:8000"
     volumes:
@@ -32,6 +38,8 @@ services:
       - ./circuits:/circuits
       - ./tools:/tools
       - ./track_maps:/track_maps
+      # Datasets brutos (fora do git), mapeamentos e curvas (versionados).
+      - ./data:/data
       - fastf1_cache:/cache/fastf1
     depends_on:
       db:

@@ -1,6 +1,6 @@
 """Gera os arquivos do contrato D3 a partir da telemetria do FastF1.
 
-Executar com `make seed`. A saída vai para `circuits/{circuit_id}.json` e é
+Executar com `make circuitos`. A saída vai para `circuits/{circuit_id}.json` e é
 consumida por duas trilhas: o Daniel anota zonas por intervalo de `distance_m`
 e o Anderson interpola a posição dos carros ao longo dos pontos.
 """

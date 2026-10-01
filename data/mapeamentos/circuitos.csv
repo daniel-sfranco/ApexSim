@@ -1,0 +1,25 @@
+circuit_id,gp_nome,nome_circuito,pais,temporadas,arquivo_alexjr,circuitId_historico,no_projeto,length_m_oficial
+albert_park,Australian Grand Prix,Albert Park Grand Prix Circuit,Australia,2023;2024,Australian_Grand_Prix.csv,1,False,
+americas,United States Grand Prix,Circuit of the Americas,USA,2023;2024,United_States_Grand_Prix.csv,69,False,
+bahrain,Bahrain Grand Prix,Bahrain International Circuit,Bahrain,2023;2024,Bahrain_Grand_Prix.csv,3,False,
+baku,Azerbaijan Grand Prix,Baku City Circuit,Azerbaijan,2023;2024,Azerbaijan_Grand_Prix.csv,73,False,
+catalunya,Spanish Grand Prix,Circuit de Barcelona-Catalunya,Spain,2023;2024,Spanish_Grand_Prix.csv,4,False,
+hungaroring,Hungarian Grand Prix,Hungaroring,Hungary,2023;2024,Hungarian_Grand_Prix.csv,11,False,
+imola,Emilia Romagna Grand Prix,Autodromo Enzo e Dino Ferrari,Italy,2024,Emilia_Romagna_Grand_Prix.csv,21,False,
+interlagos,São Paulo Grand Prix,Autódromo José Carlos Pace,Brazil,2023;2024,São_Paulo_Grand_Prix.csv,18,True,4309
+jeddah,Saudi Arabian Grand Prix,Jeddah Corniche Circuit,Saudi Arabia,2023;2024,Saudi_Arabian_Grand_Prix.csv,77,False,
+losail,Qatar Grand Prix,Losail International Circuit,Qatar,2023;2024,,78,False,
+marina_bay,Singapore Grand Prix,Marina Bay Street Circuit,Singapore,2023;2024,Singapore_Grand_Prix.csv,15,False,
+miami,Miami Grand Prix,Miami International Autodrome,USA,2023;2024,Miami_Grand_Prix.csv,79,False,
+monaco,Monaco Grand Prix,Circuit de Monaco,Monaco,2023;2024,Monaco_Grand_Prix.csv,6,True,3337
+monza,Italian Grand Prix,Autodromo Nazionale di Monza,Italy,2023;2024,Italian_Grand_Prix.csv,14,True,5793
+red_bull_ring,Austrian Grand Prix,Red Bull Ring,Austria,2023;2024,Austrian_Grand_Prix.csv,70,False,
+rodriguez,Mexico City Grand Prix,Autódromo Hermanos Rodríguez,Mexico,2023;2024,Mexico_City_Grand_Prix.csv,32,False,
+shanghai,Chinese Grand Prix,Shanghai International Circuit,China,2024,Chinese_Grand_Prix.csv,17,False,
+silverstone,British Grand Prix,Silverstone Circuit,UK,2023;2024,British_Grand_Prix.csv,9,False,
+spa,Belgian Grand Prix,Circuit de Spa-Francorchamps,Belgium,2023;2024,Belgian_Grand_Prix.csv,13,False,
+suzuka,Japanese Grand Prix,Suzuka Circuit,Japan,2023;2024,Japanese_Grand_Prix.csv,22,False,
+vegas,Las Vegas Grand Prix,Las Vegas Strip Street Circuit,United States,2023;2024,,80,False,
+villeneuve,Canadian Grand Prix,Circuit Gilles Villeneuve,Canada,2023;2024,Canadian_Grand_Prix.csv,7,False,
+yas_marina,Abu Dhabi Grand Prix,Yas Marina Circuit,UAE,2023;2024,,24,False,
+zandvoort,Dutch Grand Prix,Circuit Park Zandvoort,Netherlands,2023;2024,Dutch_Grand_Prix.csv,39,False,
