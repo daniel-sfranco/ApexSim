@@ -21,7 +21,9 @@ export function useRaceWebSocket(raceId?: string) {
     const defaultHost =
       typeof window !== "undefined" ? window.location.hostname : "localhost";
     const wsBase =
-      process.env.NEXT_PUBLIC_WS_URL || `ws://${defaultHost}:8080`;
+      (import.meta as any).env?.VITE_WS_URL ||
+      (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_WS_URL) ||
+      `ws://${defaultHost}:8080`;
 
     if (raceId) {
       return `${wsBase}/ws/races/${raceId}`;
