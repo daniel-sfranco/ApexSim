@@ -4,6 +4,7 @@ import {
   LapUpdate,
   EventUpdate,
   EnrichedDriverState,
+  TyreCompound,
 } from "@/types";
 import { DEFAULT_DRIVERS, CIRCUITS, F1_TEAMS } from "@/lib/constants";
 
@@ -49,7 +50,10 @@ const initialConfig: RaceConfig = {
 };
 
 // Gera drivers iniciais enriquecidos a partir do grid configurado
-function buildInitialDrivers(grid: string[]): EnrichedDriverState[] {
+function buildInitialDrivers(
+  grid: string[],
+  initialStrategy?: Record<string, TyreCompound>
+): EnrichedDriverState[] {
   return grid.map((driverCode, index) => {
     const driverRef =
       DEFAULT_DRIVERS.find((d) => d.code === driverCode) ||
@@ -61,6 +65,8 @@ function buildInitialDrivers(grid: string[]): EnrichedDriverState[] {
         defaultTyre: "MEDIUM",
       };
 
+    const tyre = initialStrategy?.[driverCode] || driverRef.defaultTyre;
+
     return {
       driver_id: driverRef.code,
       name: driverRef.name,
@@ -68,10 +74,10 @@ function buildInitialDrivers(grid: string[]): EnrichedDriverState[] {
       teamColor: driverRef.teamColor,
       position: index + 1,
       positionChange: 0,
-      gap_to_leader: index === 0 ? 0.0 : index * 1.5,
-      gap_to_ahead: index === 0 ? null : 1.5,
+      gap_to_leader: index === 0 ? 0.0 : Number((index * 1.25).toFixed(3)),
+      gap_to_ahead: index === 0 ? null : 1.25,
       last_lap_time: null,
-      tyre_compound: driverRef.defaultTyre,
+      tyre_compound: tyre,
       tyre_age: 0,
       fuel_load_kg: 105.0,
       pit_status: "NONE",
@@ -86,7 +92,7 @@ function buildInitialDrivers(grid: string[]): EnrichedDriverState[] {
 export const useRaceStore = create<RaceStoreState>((set, get) => ({
   config: initialConfig,
   currentLapData: null,
-  drivers: buildInitialDrivers(initialConfig.grid),
+  drivers: buildInitialDrivers(initialConfig.grid, initialConfig.initialStrategy),
   previousPositions: {},
   events: [],
   isPaused: false,
@@ -108,7 +114,7 @@ export const useRaceStore = create<RaceStoreState>((set, get) => ({
       }
       return {
         config: updatedConfig,
-        drivers: buildInitialDrivers(updatedConfig.grid),
+        drivers: buildInitialDrivers(updatedConfig.grid, updatedConfig.initialStrategy),
       };
     });
   },
@@ -116,7 +122,7 @@ export const useRaceStore = create<RaceStoreState>((set, get) => ({
   reorderGrid: (newGrid) => {
     set((state) => ({
       config: { ...state.config, grid: newGrid },
-      drivers: buildInitialDrivers(newGrid),
+      drivers: buildInitialDrivers(newGrid, state.config.initialStrategy),
     }));
   },
 
@@ -186,7 +192,7 @@ export const useRaceStore = create<RaceStoreState>((set, get) => ({
     const { config } = get();
     set({
       currentLapData: null,
-      drivers: buildInitialDrivers(config.grid),
+      drivers: buildInitialDrivers(config.grid, config.initialStrategy),
       previousPositions: {},
       events: [],
       isPaused: false,

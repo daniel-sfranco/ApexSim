@@ -30,8 +30,8 @@ const DRIVER_POOL = [
 ];
 
 class MockRaceSimulator {
-  constructor(totalLaps = 53, circuitId = 'interlagos') {
-    this.raceId = 'mock-' + Math.random().toString(36).substring(2, 9);
+  constructor(totalLaps = 53, circuitId = 'interlagos', grid = null, initialStrategy = null, raceId = null) {
+    this.raceId = raceId || 'mock-' + Math.random().toString(36).substring(2, 9);
     this.totalLaps = totalLaps;
     this.circuitId = circuitId;
     this.currentLap = 0;
@@ -44,25 +44,52 @@ class MockRaceSimulator {
     this.timer = null;
     this.scRemainingLaps = 0;
 
-    this.drivers = DRIVER_POOL.map((driver, index) => ({
-      driver_id: driver.driver_id,
-      name: driver.name,
-      team: driver.team,
-      team_color: driver.team_color,
-      position: index + 1,
-      total_time: 0.0,
-      gap_to_leader: index === 0 ? 0.0 : Number((index * 1.25).toFixed(3)),
-      gap_to_ahead: index === 0 ? null : 1.25,
-      last_lap_time: null,
-      tyre_compound: index % 3 === 0 ? 'SOFT' : index % 3 === 1 ? 'MEDIUM' : 'HARD',
-      tyre_age: 0,
-      fuel_load_kg: 105.0,
-      pit_status: 'NONE',
-      pit_stops_made: 0,
-      is_retired: false,
-      drs_active: false,
-      distance_m: Number(((DRIVER_POOL.length - index) * (4309 / DRIVER_POOL.length)).toFixed(1)),
-    }));
+    let orderedDrivers = DRIVER_POOL;
+    if (Array.isArray(grid) && grid.length > 0) {
+      orderedDrivers = grid.map((code, idx) => {
+        const found = DRIVER_POOL.find((d) => d.driver_id === code);
+        return (
+          found ||
+          DRIVER_POOL[idx] || {
+            driver_id: code,
+            name: code,
+            team: 'Independent',
+            team_color: '#8E9AA8',
+          }
+        );
+      });
+    }
+
+    this.drivers = orderedDrivers.map((driver, index) => {
+      const tyre =
+        initialStrategy && initialStrategy[driver.driver_id]
+          ? initialStrategy[driver.driver_id]
+          : index % 3 === 0
+          ? 'SOFT'
+          : index % 3 === 1
+          ? 'MEDIUM'
+          : 'HARD';
+
+      return {
+        driver_id: driver.driver_id,
+        name: driver.name,
+        team: driver.team,
+        team_color: driver.team_color,
+        position: index + 1,
+        total_time: Number((index * 0.8).toFixed(3)),
+        gap_to_leader: index === 0 ? 0.0 : Number((index * 0.8).toFixed(3)),
+        gap_to_ahead: index === 0 ? null : 0.8,
+        last_lap_time: null,
+        tyre_compound: tyre,
+        tyre_age: 0,
+        fuel_load_kg: 105.0,
+        pit_status: 'NONE',
+        pit_stops_made: 0,
+        is_retired: false,
+        drs_active: false,
+        distance_m: Number(((orderedDrivers.length - index) * (4309 / orderedDrivers.length)).toFixed(1)),
+      };
+    });
   }
 
   start(broadcastCallback) {
@@ -270,11 +297,14 @@ class MockRaceSimulator {
     console.log(`[MockServer] Velocidade ajustada para ${this.speedMultiplier}x`);
   }
 
-  restart(totalLaps = 53, circuitId = 'interlagos') {
+  restart(totalLaps = 53, circuitId = 'interlagos', grid = null, initialStrategy = null, raceId = null) {
     if (this.timer) clearTimeout(this.timer);
-    const newSim = new MockRaceSimulator(totalLaps, circuitId);
+    const newSim = new MockRaceSimulator(totalLaps, circuitId, grid, initialStrategy, raceId);
+    const oldBroadcast = this.broadcast;
     Object.assign(this, newSim);
-    console.log('[MockServer] Corrida reiniciada');
+    this.broadcast = oldBroadcast;
+    console.log(`[MockServer] Corrida reiniciada (${this.raceId}) com ${this.drivers.length} pilotos.`);
+    console.log(`[MockServer] P1 de largada: ${this.drivers[0].name} (${this.drivers[0].driver_id}) com pneus ${this.drivers[0].tyre_compound}`);
     this.scheduleNextTick();
   }
 }
@@ -311,9 +341,15 @@ wss.on('connection', (ws, req) => {
         simulator.resume();
       } else if (payload.action === 'set_speed' && typeof payload.speed_multiplier === 'number') {
         simulator.setSpeed(payload.speed_multiplier);
-      } else if (payload.action === 'restart') {
-        simulator.restart(payload.total_laps || 53, payload.circuit_id || 'interlagos');
-        ws.send(JSON.stringify(simulator.getLapUpdateEnvelope()));
+      } else if (payload.action === 'restart' || payload.action === 'start' || payload.action === 'init') {
+        simulator.restart(
+          payload.total_laps || payload.totalLaps || 53,
+          payload.circuit_id || payload.circuitId || 'interlagos',
+          payload.grid,
+          payload.initial_strategy || payload.initialStrategy,
+          payload.race_id || payload.raceId
+        );
+        broadcast(simulator.getLapUpdateEnvelope());
       }
     } catch (err) {
       console.error('[MockServer] Erro ao processar mensagem do cliente:', err);

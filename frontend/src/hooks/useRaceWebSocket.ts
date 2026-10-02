@@ -47,14 +47,42 @@ export function useRaceWebSocket(raceId?: string) {
       ws.onopen = () => {
         console.log("[useRaceWebSocket] Conexão estabelecida com sucesso!");
         setConnectionStatus("connected");
+
+        // Envia imediatamente a configuração da corrida (grid, voltas, circuito, pneus)
+        // para reiniciar a simulação a partir da volta 0 com o novo grid sorteado
+        const { config } = useRaceStore.getState();
+        if (config && ws.readyState === WebSocket.OPEN) {
+          const initPayload = {
+            action: "restart",
+            race_id: raceId,
+            circuit_id: config.circuitId,
+            total_laps: config.totalLaps,
+            seed: config.seed,
+            weather: config.weather,
+            grid: config.grid,
+            initial_strategy: config.initialStrategy,
+          };
+          console.log("[useRaceWebSocket] Inicializando simulação com grid sorteado:", initPayload);
+          ws.send(JSON.stringify(initPayload));
+        }
       };
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           if (data.type === "lap_update") {
+            // Ignora envelopes de corrida antiga em andamento/finalizada
+            if (raceId && data.race_id && data.race_id !== raceId && data.current_lap > 0) {
+              console.log(
+                `[useRaceWebSocket] Ignorando lap_update antigo (${data.race_id}, volta ${data.current_lap})`
+              );
+              return;
+            }
             processLapUpdate(data as LapUpdate);
           } else if (data.type === "event_update") {
+            if (raceId && data.race_id && data.race_id !== raceId) {
+              return;
+            }
             addEvent(data as EventUpdate);
           }
         } catch (err) {
@@ -78,7 +106,7 @@ export function useRaceWebSocket(raceId?: string) {
       setConnectionStatus("error");
       reconnectTimeoutRef.current = setTimeout(connect, 3000);
     }
-  }, [getWsUrl, processLapUpdate, addEvent, setConnectionStatus]);
+  }, [getWsUrl, processLapUpdate, addEvent, setConnectionStatus, raceId]);
 
   useEffect(() => {
     connect();
@@ -117,9 +145,18 @@ export function useRaceWebSocket(raceId?: string) {
 
   const restart = useCallback(
     (totalLaps?: number, circuitId?: string) => {
-      sendCommand({ action: "restart", total_laps: totalLaps, circuit_id: circuitId });
+      const { config, resetRace } = useRaceStore.getState();
+      resetRace();
+      sendCommand({
+        action: "restart",
+        race_id: raceId,
+        total_laps: totalLaps ?? config.totalLaps,
+        circuit_id: circuitId ?? config.circuitId,
+        grid: config.grid,
+        initial_strategy: config.initialStrategy,
+      });
     },
-    [sendCommand]
+    [sendCommand, raceId]
   );
 
   return {
