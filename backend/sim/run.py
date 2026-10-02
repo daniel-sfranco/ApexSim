@@ -48,6 +48,8 @@ def montar_grid_inicial() -> RaceState:
             name=name,
             team=team,
             position=grid_position,
+            lap_distance_covered = 0.0,
+            total_distance_covered = 0.0,
             current_lap=0,
             last_lap_time=None,
             gap_to_leader=0.0 if grid_position == 1 else float(grid_position - 1) * 0.3,
@@ -58,8 +60,8 @@ def montar_grid_inicial() -> RaceState:
             pit_status=PitStatus.NONE,
             pit_stops_made=0,
             is_retired=False,
-            total_race_time=0.0,
-            base_lap_time=90.0 + grid_position * 0.1,  # Tempo base de volta, em segundos
+            base_velocity=20.0,  # Velocidade base de volta, em metros por segundo
+            lap_time_sum=0.0
         )
 
     return RaceState(
@@ -92,8 +94,11 @@ def main():
     args = parser.parse_args()
     random.seed(args.seed)
     race_state = montar_grid_inicial()
-    for _i in range(args.laps):
-        tick(race_state, delta_time=1.0)
+    laps_alvo = min(args.laps, race_state.total_laps)
+    while race_state.current_lap < laps_alvo:
+        tick(race_state, delta_time=10.0, track_length=3337)
+        print(f"{race_state.elapsed_time:.1f}s #########################################################################")
+    race_state.is_finished = race_state.current_lap >= race_state.total_laps
 
 
 if __name__ == "__main__":
