@@ -4,6 +4,7 @@ up:
 	docker compose up --build -d
 	@echo "API:  http://localhost:8000/health"
 	@echo "Web:  http://localhost:3000"
+	@echo "Mock: ws://localhost:8080"
 
 down:
 	docker compose down
