@@ -1,19 +1,11 @@
-const WebSocket = require('ws');
+// Servidor WebSocket Mock do ApexSim (Contrato D2)
+// Sincronizado com frontend/scripts/mock-server.js
 
-const server = new WebSocket.Server({ port: 8080 });
+const path = require('path');
+const mockScript = path.resolve(__dirname, '../../frontend/scripts/mock-server.cjs');
 
-server.on('connection', (socket) => {
-  console.log('Novo cliente conectado!');
-
-  socket.on('message', (message) => {
-    console.log(`Mensagem recebida: ${message}`);
-    // Envia a mensagem de volta para o cliente (eco)
-    socket.send(`Servidor recebeu: ${message}`);
-  });
-
-  socket.on('close', () => {
-    console.log('Cliente desconectado.');
-  });
-});
-
-console.log('Servidor WebSocket rodando na porta ws://localhost:8080');
+try {
+  require(mockScript);
+} catch (err) {
+  console.error('Erro ao inicializar mock server compartilhado:', err);
+}

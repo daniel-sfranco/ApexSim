@@ -22,6 +22,7 @@ Pronto. Verifique:
 - API — <http://localhost:8000/health> responde `{"status": "ok"}`
 - Docs da API — <http://localhost:8000/docs>
 - Web — <http://localhost:3000>
+- Mock WS — `ws://localhost:8080`
 
 ## Comandos
 
@@ -47,7 +48,7 @@ Pronto. Verifique:
 | Serviço | Porta | Stack |
 |---|---|---|
 | `api` | 8000 | Python 3.11, FastAPI, uv |
-| `web` | 3000 | Node 20 — scaffold Next.js em andamento |
+| `web` | 3000, 8080 | Node 20 — React (Vite) + Mock WebSocket Server |
 | `db` | 5433 (host) | PostgreSQL 16 |
 
 O cache do FastF1 fica num volume nomeado (`fastf1_cache`). Não apague sem

@@ -20,6 +20,12 @@ __pycache__/
 # Node
 node_modules/
 .next/
+<<<<<<< HEAD
 
 # Arquivos temporários do NFS (surgem ao apagar arquivo aberto em home de rede)
 .nfs*
+=======
+out/
+dist/
+*.tsbuildinfo
+>>>>>>> 239d7aa (feat(front): implementa marcos M0 e M1 com Next.js, Timing Tower e WebSocket mock)
