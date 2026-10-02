@@ -24,17 +24,20 @@ class TyreParams:
     publico exato por equipe, o valor pontual dentro da faixa e marcado
     como 'estimado'.
     """
-    k1_quad: float   # s/volta^2 - estimado dentro da faixa da literatura
-    k2_lin: float    # s/volta   - degradacao linear (fonte: f1chronicle 2024-2026)
-    cliff_age: float  # voltas   - idade em que o cliff comeca (estimado)
-    cliff_delta: float  # s      - magnitude do salto no cliff (estimado)
-    cliff_beta: float  # 1/volta - inclinacao da transicao logistica (estimado)
+    k1_quad: float   # s/volta^2 - calibrado no Kaggle 2023-2024 (D5)
+    k2_lin: float    # s/volta   - degradacao linear calibrada no Kaggle 2023-2024 (D5)
+    cliff_age: float  # voltas   - idade em que o cliff comeca (estimado teorico)
+    cliff_delta: float  # s      - magnitude do salto no cliff (estimado teorico)
+    cliff_beta: float  # 1/volta - inclinacao da transicao logistica (estimado teorico)
 
 
+# Calibrado a partir do dataset Kaggle/FastF1 2023-2024 (39.966 voltas limpas, 44 GPs, D5).
+# Os coeficientes k1_quad e k2_lin são os valores medidos pelo estimador do Octávio.
+# Os cliffs representam o limite prático de cada composto (Soft ~18v, Medium ~23.5v, Hard ~42v).
 TYRE_TABLE = {
-    "soft":   TyreParams(k1_quad=0.0009, k2_lin=0.075, cliff_age=14, cliff_delta=1.2, cliff_beta=0.9),
-    "medium": TyreParams(k1_quad=0.0006, k2_lin=0.058, cliff_age=22, cliff_delta=0.8, cliff_beta=0.7),
-    "hard":   TyreParams(k1_quad=0.0004, k2_lin=0.048, cliff_age=32, cliff_delta=0.5, cliff_beta=0.5),
+    "soft":   TyreParams(k1_quad=0.002412, k2_lin=0.008639, cliff_age=18.0, cliff_delta=1.2, cliff_beta=0.9),
+    "medium": TyreParams(k1_quad=0.000847, k2_lin=0.015558, cliff_age=23.5, cliff_delta=0.8, cliff_beta=0.7),
+    "hard":   TyreParams(k1_quad=0.0,      k2_lin=0.051181, cliff_age=42.0, cliff_delta=0.5, cliff_beta=0.5),
 }
 
 # Sensibilidade do grip a temperatura de pista fora da janela ideal.

@@ -52,6 +52,13 @@ t_{lap,tire}(a,c) = t_{tire,quad}(a,c) + t_{cliff}(a,c)
 - Cliff térmico: em pneus C3–C5 da era de efeito solo, o salto de degradação pode variar de 0,3 a 1,5+ s/volta quando o pneu ultrapassa a janela térmica ótima, tipicamente entre a volta 18–30 dependendo do composto e da abrasividade da pista.
 - Correção de combustível usada como premissa para isolar o termo de pneu: 0,03–0,08 s/kg (ver Seção 2); os resultados de degradação são robustos a essa faixa[1].
 
+#### Calibração Empírica ApexSim — Entrega D5 (Dataset Kaggle / FastF1 2023–2024)
+A calibração direta sobre 39.966 voltas limpas de 44 GPs (`data/curvas_degradacao/curvas_degradacao.json`) resultou nos seguintes parâmetros adotados em `physics.py`:
+- **Soft**: \(k_{1,quad} = 0,002412\), \(k_{2,lin} = 0,008639\).
+- **Medium**: \(k_{1,quad} = 0,000847\), \(k_{2,lin} = 0,015558\).
+- **Hard**: \(k_{1,quad} = 0,0\), \(k_{2,lin} = 0,051181\) (curva medida côncava na amostra, em virtude do viés de seleção das pistas onde o Hard é empregado).
+- **Cliffs (\(a_{cliff}, \Delta_{cliff}, \beta\))**: **Não observados** empiricamente na telemetria de corrida, uma vez que as paradas de box ocorrem antes da falha mecânica/térmica crítica do composto. Mantidos na tabela `TYRE_TABLE` sob rótulo de *estimativa teórica declarada* posicionados logo após o fim da janela útil observada de cada composto: **Soft** em 18 voltas (\(\Delta=1{,}2\text{s}\)), **Medium** em 23,5 voltas (\(\Delta=0{,}8\text{s}\)) e **Hard** em 42 voltas (\(\Delta=0{,}5\text{s}\)).
+
 ### 1.4 Referências
 
 - Fieni, G. et al. "Towards Learning-Based Formula 1 Race Strategies" (2025). arXiv:2512.21570 — modelo \(T_{lap} = T_{nom}(\ldots) + \Delta T_j(TW)\) com correção de combustível separada[2].

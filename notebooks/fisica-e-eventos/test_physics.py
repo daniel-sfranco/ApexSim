@@ -1,11 +1,10 @@
-"""
-tests/test_physics.py
-
-Testes unitarios para apexsim/physics.py (funcoes puras).
-Rodar com: pytest tests/test_physics.py -v
-"""
+import sys
+from pathlib import Path
 import pytest
-from apexsim.physics import tyre_grip, tyre_time_loss, fuel_time_delta, TYRE_TABLE
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+from physics import tyre_grip, tyre_time_loss, fuel_time_delta, TYRE_TABLE
 
 
 class TestTyreGrip:
