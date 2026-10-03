@@ -1,8 +1,8 @@
 # ApexSim — Arquitetura de Software
 
-> **Status:** Especificação técnica — aguardando PRs do Daniel e do Anderson para incorporar estado final do M1
+> **Status:** Especificação técnica consolidada — Marco M1 concluído (Track Editor, anotações semânticas D4, calibração de física e scaffold Frontend incorporados)
 > **Disciplina:** MC857 · Turma A · 2º Semestre 2026
-> **Documentos relacionados:** [frontend-ux.md](frontend-ux.md) · [integracao-m2.md](integracao-m2.md) · [fisica.md](fisica.md) · [banco-de-dados.md](banco-de-dados.md)
+> **Documentos relacionados:** [frontend-ux.md](frontend-ux.md) · [integracao-m2.md](integracao-m2.md) · [fisica.md](fisica.md) · [banco-de-dados.md](banco-de-dados.md) · [track-map-schema.md](track-map-schema.md)
 
 ---
 
@@ -21,12 +21,46 @@ O **ApexSim** é um simulador estocástico e determinístico de Fórmula 1 com m
 
 ### 1.2 Padrão Arquitetural: Monólito Modular
 
-Os 3 contêineres do Docker (`db`, `api`, `web`) são a arquitetura clássica de **3 camadas** — não microsserviços.
+O backend do ApexSim é projetado como um **Monólito Modular**. Em vez de microsserviços distribuídos (que adicionariam latência de rede crítica para um loop de simulação de alta frequência) ou um monolito desestruturado, o código é particionado em **três módulos principais com fronteiras rígidas (Bounded Contexts)**:
 
-**Por que não microsserviços:**
-- Um tick de simulação executa dezenas de cálculos de física para 20 carros. Chamadas HTTP/gRPC entre serviços tornariam inviável simular em tempo real. No monólito, são invocações de função em memória — microssegundos.
-- Manter o `rng` e o relógio em memória compartilhada elimina problemas de sincronização de sistemas distribuídos.
-- Microsserviços exigiriam múltiplos pipelines de CI, service discovery e resiliência a partição — sobrecarga desnecessária para 15 semanas.
+1. **`sim` — Domínio e Motor de Simulação (Core)**:
+   - **Regra de ouro:** Código puramente matemático e determinístico em memória.
+   - **Zero dependências externas:** Não importa FastAPI, Uvicorn, SQLAlchemy ou WebSockets.
+   - **Componentes:**
+     - `physics.py`: Equações de degradação física de pneus (quadrática + linear + cliff logístico), consumo de combustível e temperatura.
+     - `track.py`: Modelo semântico `TrackMap` e `Zone` (Contrato D4).
+     - `state.py`: Máquina de estado da corrida (`RaceState`, `DriverState`, `tick()`).
+     - `engine.py`: Orquestrador assíncrono do loop de simulação, controle de relógio (`play`, `pause`, `set_speed`) e semente determinística (`Random(seed)`).
+2. **`db` — Persistência Relacional**:
+   - Camada de acesso ao banco PostgreSQL via SQLAlchemy.
+   - Responsável por armazenar pilotos, equipes, circuitos e persistir resultados históricos em lote (fim da volta e pós-corrida).
+   - Não conhece regras de transporte web (`app`) nem regras de física do carro (`sim`).
+3. **`app` — Transporte e Orquestração (Web Layer)**:
+   - API FastAPI: endpoints REST (`/health`, `/api/races`, `/api/track-maps`) e WebSocket (`/ws/races/{id}`).
+   - Orquestra os módulos: recebe o comando do usuário, instancia o `RaceEngine` em memória e despacha snapshots de estado (`lap_update`) para o frontend.
+4. **`pipeline` — ETL Offline e Validação**:
+   - Scripts executados via linha de comando (`make dados`, `make circuitos`, `make validate-tracks`).
+   - Processamento de dados brutos do Kaggle e telemetria do FastF1.
+
+```mermaid
+flowchart TD
+    subgraph WEB ["Camada de Transporte (FastAPI / WebSockets)"]
+        APP["app/ — Rotas REST, Handlers WS e Config"]
+    end
+
+    subgraph DOMAIN ["Núcleo de Domínio e Simulação (Zero I/O)"]
+        SIM["sim/ — state.py, engine.py, physics.py, track.py"]
+    end
+
+    subgraph PERSISTENCE ["Camada de Persistência (PostgreSQL)"]
+        DB["db/ — SQLAlchemy, Repositórios, Migrations"]
+    end
+
+    APP -->|"instancia e controla"| SIM
+    APP -->|"persiste resultados"| DB
+    SIM -.->|"NÃO CONHECE NINGUÉM (Funções Puras)"| APP
+    SIM -.->|"NÃO CONHECE NINGUÉM"| DB
+```
 
 ---
 
@@ -40,105 +74,91 @@ flowchart TB
         Analytics["Resultados e Analytics"]
     end
 
-    subgraph API ["Backend FastAPI - Python"]
-        REST["Rotas REST - health, circuits, track-maps, races"]
+    subgraph APP_LAYER ["app/ (FastAPI)"]
+        REST["Rotas REST - health, races, track-maps"]
         WS["WebSocket - ws/races/id"]
-        StaticFiles["StaticFiles - circuits e admin/track-editor"]
+        StaticFiles["StaticFiles - /circuits e /admin/track-editor"]
     end
 
-    subgraph SIM ["Motor de Simulacao - Gabriel"]
-        Engine["RaceEngine - loop, seed, play, pause"]
-        Tick["tick - avanco de volta e calculo de gaps"]
+    subgraph SIM_MODULE ["sim/ (Motor e Domínio Puro)"]
+        Engine["RaceEngine - loop, play, pause, set_speed"]
+        Tick["tick - avanço de tempo e gaps"]
+        Physics["physics.py - degradação, cliff, combustível"]
+        TrackMap["track.py - TrackMap e Zone"]
         State["RaceState e DriverState"]
     end
 
-    subgraph DOMAIN ["Dominio Puro"]
-        Physics["Fisica de Pneus e Combustivel - Isaac"]
-        Events["Eventos Estocasticos e Safety Car - Isaac"]
-        TrackMap["TrackMap e Zone - Daniel"]
-        Strategy["Heuristica de Pit Stop - Daniel"]
+    subgraph DB_MODULE ["db/ (Persistência)"]
+        Postgres[("PostgreSQL")]
+        Repo["repositorio.py e models.py"]
     end
 
-    subgraph DATA ["Dados e Plataforma - Octavio"]
-        DB[("PostgreSQL")]
-        CircuitsJSON["circuits/*.json - pipeline FastF1 via make seed"]
-        TrackMapsJSON["track_maps/*.json - editor de pistas do Daniel"]
+    subgraph DATA_ASSETS ["data/ (Arquivos e Datasets Estáticos)"]
+        CircuitsJSON["data/circuits/*.json (D3)"]
+        TrackMapsJSON["data/track_maps/*.json (D4)"]
+        DegradationData["data/curvas_degradacao/*.json (D5)"]
     end
 
     Setup -->|"POST /api/races"| REST
-    REST -->|"instancia RaceEngine"| Engine
-    WS <-->|"lap_update, event_update"| Cockpit
-    WS <-->|"play, pause, set_speed"| Cockpit
+    REST -->|"carrega D4 e instancia"| Engine
     Engine --> Tick
     Tick --> State
-    Tick -->|"calcula delta de tempo"| Physics
-    Tick -->|"sorteia incidentes"| Events
-    Events -->|"consulta zones"| TrackMap
-    Tick -->|"decide parada"| Strategy
-    Strategy -->|"consulta pit_lane time_loss"| TrackMap
-    REST --> CircuitsJSON
-    REST --> TrackMapsJSON
-    Engine -.->|"historico em lote por volta"| DB
+    Tick -->|"calcula delta de aderência"| Physics
+    Tick -->|"consulta zonas e frenagens"| TrackMap
+    Engine -->|"emite lap_update via broadcast"| WS
+    WS <-->|"feed ao vivo e controles"| Cockpit
+    Engine -.->|"histórico da volta"| Repo
+    Repo --> Postgres
     Analytics -->|"GET /api/races/id/results"| REST
-    REST --> DB
 ```
 
 ---
 
-## 3. Organização do Repositório (alvo pós-PRs do Daniel e Anderson)
+## 3. Organização do Repositório (Alvo Consolidado M2)
+
+A raiz do projeto é enxuta, dividida em **5 diretórios com propósitos distintos**:
 
 ```
 ApexSim/
-├── backend/
-│   ├── app/
-│   │   ├── main.py              # FastAPI: rotas REST + StaticFiles para circuits/ e track-editor
-│   │   ├── config.py            # Settings: caminhos de circuits/, track_maps/, cache FastF1
-│   │   ├── api/                 # Routers: health, races, circuits
-│   │   ├── models/
-│   │   │   └── track.py         # TrackMap e Zone (Contrato D4 — já implementado pelo Daniel)
-│   │   ├── pipeline/            # FastF1 -> RDP -> circuits/*.json
-│   │   │   ├── circuits.py
-│   │   │   ├── geometria.py
-│   │   │   └── rdp.py
-│   │   └── websocket/           # Handler WebSocket (/ws/races/{id})
-│   ├── sim/
-│   │   ├── state.py             # RaceState, DriverState, LapResult, tick()
-│   │   ├── engine.py            # RaceEngine: loop, play/pause, seed (a criar no M2)
-│   │   ├── run.py               # CLI para testes locais
-│   │   └── physics/             # Domínio de Física e Eventos — Isaac (a migrar do notebook)
-│   │       ├── tyres.py
-│   │       ├── fuel.py
-│   │       ├── aero.py
-│   │       ├── events.py
-│   │       └── safety_car.py
-│   ├── db/
+├── backend/                     # ⚙️ Módulos do Backend (Monólito Modular)
+│   ├── app/                     # Camada Web: FastAPI, REST e WebSockets
+│   │   ├── main.py
+│   │   ├── config.py
+│   │   ├── api/                 # Endpoints REST (/health, /api/races, /api/track-maps)
+│   │   └── websocket/           # Handler nativo em Python (/ws/races/{id})
+│   ├── sim/                     # Módulo Core: Motor e Domínio Puro (Zero I/O)
+│   │   ├── engine.py            # RaceEngine (loop, play/pause, seed)
+│   │   ├── state.py             # RaceState, DriverState, tick()
+│   │   ├── physics.py           # Física de pneus, combustível e temperatura
+│   │   └── track.py             # TrackMap e Zone (consultas espaciais 1D)
+│   ├── db/                      # Camada de Persistência Relacional
 │   │   ├── base.py
-│   │   └── models.py
-│   ├── migrations/              # Alembic — roda no make up, não no runtime da corrida
-│   └── tests/
-├── frontend/                    # SPA React + Vite — Anderson
-│   ├── src/
-│   │   ├── components/          # TimingTower, Minimap, Setup, Controls, Analytics
-│   │   ├── hooks/               # useRaceWebSocket, useRaceConfig
-│   │   └── types/               # Tipos TypeScript espelhando os contratos D2
-│   ├── package.json
-│   └── vite.config.ts
-├── circuits/                    # Contrato D3: gerados por make seed via FastF1 + RDP
-├── track_maps/                  # Contrato D4: gerados pelo editor de pistas do Daniel
-├── tools/
-│   └── track_editor/            # Ferramenta interna de anotação de zonas (Daniel)
-├── notebooks/
-│   ├── validacao_pneus.ipynb    # Isaac: modelo vs. curvas reais
-│   └── calibracao_motor.ipynb   # Gabriel: tempos simulados vs. reais
-├── docs/
-│   ├── arquitetura.md           # Este documento
-│   ├── frontend-ux.md           # Jornada do usuário e especificação de telas
-│   ├── integracao-m2.md         # Guia técnico de execução do M2
-│   ├── fisica.md                # Isaac: equações, variáveis, faixas e referências
-│   ├── track-map-schema.md      # Daniel: tipos de zona e propriedades do D4
-│   └── banco-de-dados.md        # Octávio: modelagem relacional
+│   │   ├── models.py            # Modelos SQLAlchemy (PostgreSQL)
+│   │   ├── repositorio.py
+│   │   └── seed.py
+│   ├── pipeline/                # Scripts ETL e validação offline
+│   │   ├── circuits.py
+│   │   ├── kaggle_download.py
+│   │   ├── degradacao.py
+│   │   └── validate_track_map.py
+│   ├── migrations/              # Alembic
+│   └── tests/                   # 🧪 Suíte de testes centralizada
+│       ├── sim/                 # Testes do motor e física (test_state, test_physics, test_track)
+│       ├── db/                  # Testes de modelos e migrações
+│       └── app/                 # Testes das rotas HTTP e WebSockets
+├── frontend/                    # 🖥️ Aplicação do Usuário (SPA React + Vite)
+├── data/                        # 📦 Single Source of Truth para Dados e Artefatos Estáticos
+│   ├── circuits/                # Geometria 2D dos circuitos (D3)
+│   ├── track_maps/              # Mapas semânticos oficiais 1D (D4)
+│   ├── curvas_degradacao/       # Curvas de degradação geradas pelo Kaggle (D5)
+│   ├── mapeamentos/             # Mapeamentos de pilotos e equipes
+│   └── raw/                     # Datasets brutos (gitignored)
+├── tools/                       # 🛠️ Ferramentas de Engenharia e P&D (Offline)
+│   ├── track_editor/            # Ferramenta web standalone de anotação de pistas
+│   └── notebooks/               # Jupyter Notebooks de prototipação e análise
+├── docs/                        # 📚 Especificação Técnica e Guias
 ├── docker-compose.yml
-└── Makefile                     # make up | make seed | make test | make lint
+└── Makefile
 ```
 
 ---
@@ -166,29 +186,56 @@ Gerado por `make seed` (FastF1 + Ramer-Douglas-Peucker). Servido via `StaticFile
 
 ### 4.2 Contrato D4: Mapa de Zonas Semânticas (Daniel → Isaac & Gabriel)
 
-Persistido via `POST /api/track-maps/{id}`. Lido em runtime via `TrackMap.from_file(circuit_id)` (já implementado em `backend/app/models/track.py`).
+Persistido via `POST /api/track-maps/{circuit_id}` e lido em runtime via `TrackMap.load(circuit_id)` (implementado em `backend/app/models/track.py`).
 
 ```json
 {
   "circuit_id": "interlagos",
+  "length_m": 4309,
+  "points": [
+    { "x": -374.11, "y": -537.05, "distance_m": 0.0 }
+  ],
   "zones": [
     {
-      "zone_id": "s_do_senna_brake",
-      "type": "braking_zone",
-      "start_m": 3980, "end_m": 4180,
-      "props": { "severity": "alta", "runoff": "brita", "corner": "S do Senna" }
+      "type": "sector",
+      "start_m": 0, "end_m": 1200,
+      "props": { "number": 1 }
     },
-    { "zone_id": "drs_det_1", "type": "drs_detection", "start_m": 3850, "end_m": 3850, "props": {} },
     {
-      "zone_id": "pit_lane", "type": "pit_lane",
-      "start_m": 4200, "end_m": 4620,
-      "props": { "speed_limit_kmh": 80, "time_loss_s": 21.5 }
+      "type": "braking_zone",
+      "start_m": 240, "end_m": 370,
+      "props": { "severity": "alta", "runoff": "asfalto" }
+    },
+    {
+      "type": "drs_detection",
+      "start_m": 3850, "end_m": 3850,
+      "props": {}
+    },
+    {
+      "type": "pit_lane",
+      "start_m": 4120, "end_m": 4309,
+      "props": { "speed_limit_kmh": 80, "time_loss_s": 18.5 }
     }
   ]
 }
 ```
 
-Tipos de zona: `sector`, `corner`, `braking_zone`, `straight`, `drs_detection`, `drs_activation`, `pit_entry`, `pit_exit`, `pit_lane`, `overtaking_spot`.
+#### Tipos de zona homologados:
+`sector`, `corner`, `braking_zone`, `straight`, `drs_detection`, `drs_activation`, `pit_entry`, `pit_exit`, `pit_lane`, `overtaking_spot`.
+
+#### Métodos de consulta da classe `TrackMap`:
+- `TrackMap.load(circuit_id: str)`: Carrega e instancia o mapa semântico a partir de `track_maps/{circuit_id}.json`.
+- `track.get_zones_at(distance_m: float) -> list[Zone]`: Retorna todas as zonas ativas naquela coordenada linear.
+- `track.get_active_sector(distance_m: float) -> int`: Retorna o número do setor atual (`1`, `2` ou `3`).
+- `track.get_braking_zone_at(distance_m: float) -> Zone | None`: Retorna a zona de frenagem ativa com suas propriedades de severidade e área de escape (`runoff`).
+- `track.is_drs_active(distance_m: float) -> bool`: Consulta se o carro está em zona de ativação de DRS.
+- `track.is_in_pit_lane(distance_m: float) -> bool`: Consulta se o carro está dentro do corredor dos boxes.
+
+#### Rotas e Validação:
+- `GET /admin/track-editor/`: Aplicação web standalone para visualização e anotação contínua (Canvas 2D + Régua 1D).
+- `GET /api/track-maps/{circuit_id}`: Recupera o JSON homologado.
+- `POST /api/track-maps/{circuit_id}`: Salva modificações diretamente no diretório do projeto.
+- `make validate-tracks`: Executa validação de integridade estrutural, continuidade de setores e limites espaciais (`backend/app/pipeline/validate_track_map.py`).
 
 ### 4.3 Contrato D2: Envelope WebSocket (Motor → Frontend)
 
@@ -264,10 +311,10 @@ stateDiagram-v2
 
 ## 5. Marcos e Critérios de Aceite
 
-| Marco | Prazo | Critério |
-|---|---|---|
-| **M1** | Sem. 3–5 | Cada trilha tem testes unitários passando isoladamente. |
-| **M2** | Sem. 6 | FastAPI instancia `RaceEngine`, emite `lap_update` e a Timing Tower renderiza ao vivo. Ver [integracao-m2.md](integracao-m2.md). |
-| **M3** | Sem. 7–10 | `tick()` chama física do Isaac. Eventos usam `TrackMap` do Daniel. |
-| **M4** | Sem. 11–13 | Minimapa com `distance_m`. Stint Chart e Lap Chart do banco. Monte Carlo ativo. |
-| **M5** | Sem. 14–15 | Demo com seed fixa. Relatório consolidado. |
+| Marco | Prazo | Critério | Status |
+|---|---|---|---|
+| **M1** | Sem. 3–5 | Cada trilha tem testes unitários passando isoladamente (Física, Banco, Geometria D3, Pistas D4 e Frontend). | **Concluído (100%)** |
+| **M2** | Sem. 6 | FastAPI instancia `RaceEngine`, emite `lap_update` e a Timing Tower renderiza ao vivo. Ver [integracao-m2.md](integracao-m2.md). | Em andamento |
+| **M3** | Sem. 7–10 | `tick()` chama física do Isaac. Eventos usam `TrackMap` do Daniel. | Planejado |
+| **M4** | Sem. 11–13 | Minimapa com `distance_m`. Stint Chart e Lap Chart do banco. Monte Carlo ativo. | Planejado |
+| **M5** | Sem. 14–15 | Demo com seed fixa. Relatório consolidado. | Planejado |
