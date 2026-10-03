@@ -65,7 +65,7 @@ A camada web deve atuar apenas como ponte de transporte e orquestração entre c
 
 * No hook `useRaceWebSocket.ts`, apontar a conexão para o endpoint oficial do FastAPI (`ws://localhost:8000/ws/races/${raceId}`).
 * Validar que as ações da interface (botões de Play/Pause, controles de velocidade) enviam as mensagens correspondentes pelo socket.
-* Confirmar que a Timing Tower e o Minimapa renderizam as posições, compostos e tempos vindos da simulação real.
+* Confirmar que a Timing Tower renderiza as posições, compostos e tempos vindos da simulação real.
 
 ---
 
