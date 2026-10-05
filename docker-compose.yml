@@ -36,6 +36,8 @@ services:
     volumes:
       - ./backend:/app
       - ./circuits:/circuits
+      - ./tools:/tools
+      - ./track_maps:/track_maps
       # Datasets brutos (fora do git), mapeamentos e curvas (versionados).
       - ./data:/data
       - fastf1_cache:/cache/fastf1
