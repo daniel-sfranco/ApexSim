@@ -183,8 +183,35 @@ inteira). Isso é 0,19% do intervalo entre voltas em 1x (2 s) e menos de 2% em 1
 | `is_retired` | evento `race_events.event_type = "RETIREMENT"` com `entry_id` (`EVENTO_ABANDONO`) |
 | `TyreCompound` (inclui `UNKNOWN`) | `tyre_compounds`, com o `UNKNOWN` carregado pelo seed |
 
+## API de corridas (`app/api/races.py`)
+
+Implementa as três rotas de corrida do contrato D2 (`docs/openapi.json`). Um teste
+(`tests/api/test_contrato.py`) lê o próprio `openapi.json` e confere cada resposta e os
+campos de cada modelo, nos dois sentidos.
+
+| Rota | O que faz |
+|---|---|
+| `POST /api/races` (201) | Grava a corrida configurada e devolve `race_id` e `ws_url`. **Não instancia o motor**: o WebSocket carrega a corrida pelo `race_id` (`carregar_corrida`). |
+| `GET /api/races/{id}` | Status, `created_at` e `current_lap` (a maior volta gravada; 0 antes da largada). |
+| `GET /api/races/{id}/results` | Classificação calculada do histórico gravado. |
+
+Erros: circuito sem registro ou sem mapa de pista é **404**; grid ausente, repetido, com
+mais de 20 pilotos ou com piloto desconhecido é **422** (listando os códigos); `race_id`
+que não é UUID é 422, e corrida inexistente é 404.
+
+**Decisões**
+- **O `grid` é obrigatório na prática.** O contrato o lista como opcional, mas sem grid
+  não há corrida, e inventar um padrão seria chutar. O frontend já sempre envia.
+- **O circuito é conferido no banco antes do `TrackMap.load`**, que aceita caminhos de
+  arquivo; o `circuit_id` também só aceita `[a-z0-9_]`. Assim um id malicioso não lê arquivos.
+- **Classificação:** mais voltas completadas primeiro e, no empate, menor tempo total.
+  Quem abandonou fica atrás de quem completou mais voltas, mesmo com tempo total menor.
+- **`gap_to_leader`** é a diferença para o líder *no mesmo número de voltas*, para continuar
+  um número (o contrato não o declara nulo). Quem foi ultrapassado em voltas ou abandonou
+  fica com a diferença na última volta que completou, que não é o "+1 volta" da TV.
+- **Os pneus iniciais e o clima** ficam em `races.config` (JSONB), porque o motor os lê dali.
+
 ## Próximos passos
 
-- **API:** `POST /api/races`, `GET /api/races/{id}` e `GET /api/races/{id}/results`,
-  construídos em cima destas funções.
+- **Motor e WebSocket (Gabriel):** `carregar_corrida` na montagem e `registrar_volta` a cada volta.
 - **Quando houver mais de uma temporada:** reconciliar os nomes de equipe entre elas.
