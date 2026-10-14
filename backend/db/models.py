@@ -44,6 +44,11 @@ from db.base import Base
 # PostgreSQL) porque ALTER TYPE ... ADD VALUE é chato de reverter em migration.
 STATUS_DA_CORRIDA = ("configured", "running", "finished", "aborted")
 
+# `race_events.event_type` de um abandono. É de onde sai o `is_retired` do contrato D2,
+# que `lap_records` não guarda. `event_type` é livre (sem CHECK), então esta constante é
+# a convenção: o motor emite este valor e o repositório lê.
+EVENTO_ABANDONO = "RETIREMENT"
+
 
 # ---------------------------------------------------------------------------
 # Tabelas de referência
@@ -87,6 +92,10 @@ class Driver(Base):
     # Código FIA de 3 letras ("HAM"): é o `driver_id` que o motor emite.
     code: Mapped[str] = mapped_column(String(3), unique=True)
     full_name: Mapped[str] = mapped_column(String(100))
+    # Equipe padrão do piloto na temporada do seed. O grid da API (contrato D2) chega só
+    # com códigos de piloto, então é daqui que sai a equipe da inscrição; quem troca de
+    # equipe no meio do ano fica com a de mais voltas. Nulo = ainda sem equipe padrão.
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"))
 
 
 class TyreCompound(Base):

@@ -86,12 +86,25 @@ def test_so_entram_os_tres_circuitos_do_projeto(session, referencia):
         assert circuito.length_m == CIRCUITOS[circuito.id].length_m
 
 
-def test_compostos_desconhecidos_ficam_de_fora(session, referencia):
+def test_compostos_do_contrato_entram_inclusive_o_desconhecido(session, referencia):
+    """UNKNOWN é valor válido do enum da API; sem ele no banco, uma volta com esse
+    composto derrubaria a gravação em lote por violar a chave estrangeira."""
     popular(session, referencia)
 
     codigos = set(session.scalars(select(TyreCompound.code)))
 
-    assert codigos == {"SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"}
+    assert codigos == {"SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET", "UNKNOWN"}
+
+
+def test_todo_piloto_do_seed_tem_equipe_padrao(session, referencia):
+    popular(session, referencia)
+
+    sem_equipe = session.scalars(select(Driver.code).where(Driver.team_id.is_(None))).all()
+
+    assert sem_equipe == []
+    assert session.scalar(select(Team.name).join(Driver).where(Driver.code == "VER")) == (
+        "Red Bull Racing"
+    )
 
 
 def test_grid_do_seed_e_de_uma_unica_temporada(referencia):

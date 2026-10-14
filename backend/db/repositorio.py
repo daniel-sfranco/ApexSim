@@ -26,11 +26,11 @@ class ReferenciaDesconhecida(LookupError):
 
 @dataclass(frozen=True)
 class InscricaoNoGrid:
-    """Quem larga, por qual equipe e de que posição."""
+    """Quem larga e de que posição. A `equipe` é opcional: sem ela vale a do piloto no seed."""
 
     codigo_piloto: str
-    equipe: str
     posicao_no_grid: int
+    equipe: str | None = None
 
 
 def criar_corrida(
@@ -47,21 +47,31 @@ def criar_corrida(
         raise ReferenciaDesconhecida(f"circuito desconhecido: {circuit_id!r}")
 
     pilotos = {
-        d.code: d.id
+        d.code: d
         for d in session.scalars(
             select(Driver).where(Driver.code.in_(i.codigo_piloto for i in grid))
         )
     }
     equipes = {
         t.name: t.id
-        for t in session.scalars(select(Team).where(Team.name.in_(i.equipe for i in grid)))
+        for t in session.scalars(
+            select(Team).where(Team.name.in_(i.equipe for i in grid if i.equipe))
+        )
     }
     faltam_pilotos = sorted({i.codigo_piloto for i in grid} - set(pilotos))
-    faltam_equipes = sorted({i.equipe for i in grid} - set(equipes))
+    faltam_equipes = sorted({i.equipe for i in grid if i.equipe} - set(equipes))
     if faltam_pilotos or faltam_equipes:
         raise ReferenciaDesconhecida(
             f"pilotos desconhecidos: {faltam_pilotos}; equipes desconhecidas: {faltam_equipes}"
         )
+    equipe_de = {}
+    for i in grid:
+        id_da_equipe = equipes[i.equipe] if i.equipe else pilotos[i.codigo_piloto].team_id
+        if id_da_equipe is None:
+            raise ReferenciaDesconhecida(
+                f"piloto {i.codigo_piloto} não tem equipe padrão: informe a equipe no grid"
+            )
+        equipe_de[i.codigo_piloto] = id_da_equipe
 
     corrida = Race(circuit_id=circuit_id, seed=seed, total_laps=total_laps, config=dict(config))
     session.add(corrida)
@@ -69,8 +79,8 @@ def criar_corrida(
     session.add_all(
         RaceEntry(
             race_id=corrida.id,
-            driver_id=pilotos[i.codigo_piloto],
-            team_id=equipes[i.equipe],
+            driver_id=pilotos[i.codigo_piloto].id,
+            team_id=equipe_de[i.codigo_piloto],
             grid_position=i.posicao_no_grid,
         )
         for i in grid
