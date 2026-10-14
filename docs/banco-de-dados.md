@@ -139,16 +139,52 @@ sozinho depois das migrations.
 ## Repositório (`db/repositorio.py`)
 
 Traduz o que o motor e a API falam (código FIA, slug, nome da equipe) para as
-chaves do banco, sem dar commit:
+chaves do banco. **Não dá commit**: a transação é de quem chama, então um erro no
+meio desfaz tudo.
 
-- `criar_corrida(...)`: cria a corrida e as inscrições do grid. Se um circuito,
-  piloto ou equipe não existir, falha **antes de gravar** (`ReferenciaDesconhecida`).
-- `mapa_entradas(session, race_id)`: código FIA -> `race_entries.id`. O motor chama
-  uma vez por corrida e reaproveita o mapa ao gravar as voltas em lote (semana 7).
+| Função | Para quê |
+|---|---|
+| `criar_corrida(...)` | Cria a corrida e as inscrições do grid. O grid pode vir só com códigos: a equipe vem de `drivers.team_id`, e uma equipe informada vence. Falha **antes de gravar** (`ReferenciaDesconhecida`) se circuito, piloto ou equipe não existirem, ou se o piloto não tiver equipe padrão. |
+| `mapa_entradas(race_id)` | Código FIA -> `race_entries.id`. O motor monta uma vez por corrida. |
+| `carregar_corrida(race_id)` | Circuito, seed, config, status e o grid ordenado por largada (código, nome, equipe, `entry_id`). É o que o motor consome: a API só grava e o WebSocket carrega por aqui. |
+| `gravar_voltas(mapa, voltas)` | As voltas de um fechamento de volta num único `INSERT`. Piloto fora do mapa derruba o lote antes de enviar. |
+| `gravar_eventos(...)`, `registrar_abandono(...)` | Linhas de `race_events`. Evento global fica sem `entry_id`. |
+| `atualizar_status(race_id, status)` | Valida contra `STATUS_DA_CORRIDA` e grava `finished_at` ao terminar ou abortar. |
+
+## Persistência em lote (`app/persistencia.py`)
+
+O estado vivo fica em memória, e o banco recebe o histórico **uma vez por volta**,
+nunca a cada tick. O motor é assíncrono e o driver (psycopg) é síncrono, então
+`GravadorDeCorrida.registrar_volta` leva cada gravação para uma thread
+(`asyncio.to_thread`) e abre **uma transação por volta**: se algo falhar, a volta
+inteira é desfeita. O `sim/` continua puro; quem monta a corrida entrega o callback ao motor.
+
+```python
+gravador = GravadorDeCorrida(engine, race_id)
+await gravador.mudar_status("running")
+await gravador.registrar_volta(voltas, eventos)   # a cada volta concluída
+await gravador.mudar_status("finished")
+```
+
+**Custo medido** (`make medir`: 70 voltas x 20 pilotos = 1.400 linhas, PostgreSQL local
+no Docker): média de **3,7 ms por volta** (p95 5,9 ms, máximo 11,5 ms, 0,26 s a corrida
+inteira). Isso é 0,19% do intervalo entre voltas em 1x (2 s) e menos de 2% em 10x
+(0,2 s). A primeira volta é a mais lenta porque monta o mapa de entradas.
+É medida em uma máquina, e não é teste do CI, porque teste de tempo é instável.
+
+### Do contrato (`docs/openapi.json`) para o banco
+
+| Contrato D2 | Banco |
+|---|---|
+| `race_id` (UUID) | `races.id` |
+| `CreateRaceRequest.weather`, `track_temp`, `initial_tyres` | `races.config` (JSONB) |
+| `CreateRaceRequest.grid` (só códigos) | `race_entries`, com a equipe de `drivers.team_id` |
+| `LapResult` do motor | `lap_records`: `lap_time` -> `lap_time_s`, `fuel_load` -> `fuel_load_kg`, `pit_time` -> `pit_time_s`, o composto pelo nome do enum |
+| `is_retired` | evento `race_events.event_type = "RETIREMENT"` com `entry_id` (`EVENTO_ABANDONO`) |
+| `TyreCompound` (inclui `UNKNOWN`) | `tyre_compounds`, com o `UNKNOWN` carregado pelo seed |
 
 ## Próximos passos
 
-- **Semana 7:** gravar `lap_records` e `race_events` em lote, uma vez por volta.
-  O driver é síncrono e o motor é `async`: chamar via `asyncio.to_thread`.
-- **Semana 8:** endpoint `/api/races/{id}/results`.
+- **API:** `POST /api/races`, `GET /api/races/{id}` e `GET /api/races/{id}/results`,
+  construídos em cima destas funções.
 - **Quando houver mais de uma temporada:** reconciliar os nomes de equipe entre elas.
