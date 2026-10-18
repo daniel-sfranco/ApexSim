@@ -10,6 +10,7 @@ cliff). fuel_time_delta retorna segundos ADICIONAIS de tempo de volta
 devido à massa de combustível (0 = tanque vazio/mínimo).
 """
 
+import math
 from dataclasses import dataclass
 from typing import Literal
 
@@ -19,25 +20,40 @@ Compound = Literal["soft", "medium", "hard"]
 @dataclass(frozen=True)
 class TyreParams:
     """Coeficientes por composto. Fonte: docs/fisica.md, Secao 1.3.
-    Faixas calibradas a partir de Heilmeier et al. (2020) e agregados
-    FastF1 2022-2026 (F1 Chronicle, arXiv:2512.00640). Onde nao ha dado
-    publico exato por equipe, o valor pontual dentro da faixa e marcado
-    como 'estimado'.
+
+    Os coeficientes polinomiais (k1_quad, k2_lin) sao calibrados a partir do
+    dataset Kaggle/FastF1 2023-2024 (entrega D5, curvas_degradacao.json).
+    Os parametros de cliff (cliff_age, cliff_delta, cliff_beta) sao HIPOTESE
+    DE MODELAGEM SEM DADO EMPIRICO: na faixa observada (ate 19 voltas no Soft,
+    29 no Medium e 41 no Hard) nenhum cliff foi detectado (cliff: null), pois
+    as equipes realizam o pit stop antes.
     """
-    k1_quad: float   # s/volta^2 - calibrado no Kaggle 2023-2024 (D5)
-    k2_lin: float    # s/volta   - degradacao linear calibrada no Kaggle 2023-2024 (D5)
-    cliff_age: float  # voltas   - idade em que o cliff comeca (estimado teorico)
-    cliff_delta: float  # s      - magnitude do salto no cliff (estimado teorico)
-    cliff_beta: float  # 1/volta - inclinacao da transicao logistica (estimado teorico)
+
+    k1_quad: float  # s/volta^2 - calibrado no Kaggle 2023-2024 (D5)
+    k2_lin: float  # s/volta   - degradacao linear calibrada no Kaggle 2023-2024 (D5)
+    cliff_age: float  # voltas   - idade do cliff (hipotese sem dado, acima da faixa medida)
+    cliff_delta: float  # s      - magnitude do salto no cliff (hipotese sem dado)
+    cliff_beta: float  # 1/volta - inclinacao da transicao logistica (hipotese sem dado)
 
 
-# Calibrado a partir do dataset Kaggle/FastF1 2023-2024 (39.966 voltas limpas, 44 GPs, D5).
-# Os coeficientes k1_quad e k2_lin são os valores medidos pelo estimador do Octávio.
-# Os cliffs representam o limite prático de cada composto (Soft ~18v, Medium ~23.5v, Hard ~42v).
-TYRE_TABLE = {
-    "soft":   TyreParams(k1_quad=0.002412, k2_lin=0.008639, cliff_age=18.0, cliff_delta=1.2, cliff_beta=0.9),
-    "medium": TyreParams(k1_quad=0.000847, k2_lin=0.015558, cliff_age=23.5, cliff_delta=0.8, cliff_beta=0.7),
-    "hard":   TyreParams(k1_quad=0.0,      k2_lin=0.051181, cliff_age=42.0, cliff_delta=0.5, cliff_beta=0.5),
+# k1_quad e k2_lin calibrados em data/curvas_degradacao/curvas_degradacao.json
+# (39.966 voltas limpas, 44 GPs, idade_max_suportada: Soft=19, Medium=29, Hard=41).
+# Nota: na faixa medida, o Hard apresenta degradacao superior ao Medium (ex.: idade 15:
+# 0,80 s vs. 0,46 s); a hierarquia classica Soft > Medium > Hard e uma escolha de
+# modelagem que se manifesta na vida util ate o cliff (25 < 35 < 47 voltas).
+# Os parametros cliff_age (25.0, 35.0, 47.0), cliff_delta e cliff_beta sao hipoteses
+# sem dado empirico posicionadas acima de idade_max_suportada para preservar a
+# aderencia ao IC 95% medido em toda a regiao observada.
+TYRE_TABLE: dict[Compound, TyreParams] = {
+    "soft": TyreParams(
+        k1_quad=0.002412, k2_lin=0.008639, cliff_age=25.0, cliff_delta=1.2, cliff_beta=0.9
+    ),
+    "medium": TyreParams(
+        k1_quad=0.000847, k2_lin=0.015558, cliff_age=35.0, cliff_delta=0.8, cliff_beta=0.7
+    ),
+    "hard": TyreParams(
+        k1_quad=0.0, k2_lin=0.051181, cliff_age=47.0, cliff_delta=0.5, cliff_beta=0.5
+    ),
 }
 
 # Sensibilidade do grip a temperatura de pista fora da janela ideal.
@@ -50,7 +66,6 @@ TRACK_TEMP_PENALTY_PER_C = 0.004  # s/volta por grau fora da janela - estimado
 
 
 def _cliff_term(age_laps: float, p: TyreParams) -> float:
-    import math
     return p.cliff_delta / (1.0 + math.exp(-p.cliff_beta * (age_laps - p.cliff_age)))
 
 

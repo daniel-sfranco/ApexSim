@@ -9,8 +9,8 @@
 ## 1. Contexto pós-M1: Integração Real (Sem "Corrida Burra")
 
 Com as entregas do Marco M1 já validadas, o M2 integra diretamente os módulos reais de domínio:
-* **Física Calibrada (`physics.py`):** Modelo matemático de pneus com curvas reais do Kaggle (Soft, Medium, Hard), cliff logístico, penalidade térmica e consumo de combustível.
-* **Pistas Semânticas (`track.py`):** Geometrias e anotações homologadas dos 3 circuitos oficiais (Interlagos, Monza, Mônaco).
+* **Física Calibrada (`physics.py`):** Modelo matemático de pneus com coeficientes polinomiais (`k1/k2`) calibrados nas curvas reais do Kaggle (Soft, Medium, Hard) na faixa observada e cliff logístico posicionado além da última idade medida (hipótese de modelagem sem dado empírico), penalidade térmica e consumo de combustível.
+* **Pistas Semânticas (`backend/app/models/track.py`):** Geometrias e anotações homologadas dos 3 circuitos oficiais (Interlagos, Monza, Mônaco).
 * **Persistência (`db/`):** Modelos relacionais e seed do grid 2024.
 * **Frontend:** Cockpit e Timing Tower prontos para consumo de telemetria.
 
@@ -28,7 +28,7 @@ O módulo `sim` deve permanecer **100% puro** (sem I/O, sem dependência de banc
   - Mover `notebooks/fisica-e-eventos/physics.py` para `backend/sim/physics.py`.
 * **1.2 Integrar Física e Pista ao Avanço de Estado (`sim/state.py`):**
   - No avanço de cada volta (`tick`), calcular o tempo de volta combinando o tempo-base do circuito, a perda de aderência (`tyre_age` via `physics.py`), a redução de peso de combustível (`fuel_kg`) e a variação estocástica determinística (`rng.gauss`).
-  - O comprimento da volta e os limites espaciais devem ser orientados pelas informações do `TrackMap`.
+  - O comprimento da volta e os limites espaciais devem ser orientados pelas informações do `TrackMap` (`backend/app/models/track.py`).
 
 ---
 
@@ -52,7 +52,7 @@ A camada web deve atuar apenas como ponte de transporte e orquestração entre c
   - Conexão em `/ws/races/{race_id}`.
   - Ao iniciar, conecta ao `RaceEngine` associado e envia periodicamente o envelope `lap_update` (especificado no Contrato D2).
   - Recebe comandos do cliente em tempo real (`pause`, `resume`, `set_speed`) e repassa para o engine correspondente.
-  - Descontinua e remove o script temporário em Node (`backend/websocket/server.js`).
+  - Descontinua e remove o script temporário de mock em Node (`frontend/scripts/mock-server.cjs`).
 
 * **3.2 Endpoint de Criação de Corrida (`app/api/races.py`):**
   - `POST /api/races`: Recebe `circuit_id`, `seed` e `total_laps`.
