@@ -156,6 +156,7 @@ onde a perda relativa de downforce satura para gaps pequenos e decai exponencial
 - Redução total de downforce integrada (múltiplas zonas): até 12% de perda agregada, com deslocamento do equilíbrio aerodinâmico de 6–8% para trás[14].
 - Objetivo regulatório 2022 (efeito solo/underbody): a FIA visou reduzir a sensibilidade a ar sujo em relação à era 2017–2021 de wings de alta carga, mas estudos causais mostram que a penalidade de ar sujo persiste substancialmente mesmo pós-2022[15] — o efeito não foi eliminado, apenas atenuado.
 - Testes experimentais em escala (túnel de vento/PIV) mostram perda de downforce de até 53% a distâncias muito curtas (5 cm em modelo reduzido, sem offset lateral), com recuperação rápida ao aumentar distância ou aplicar offset[16].
+- **Parâmetros adotados em `backend/sim/physics.py` (M3):** penalidade máxima de volta \(\Delta t_{wake,max} = 0{,}42\text{ s/volta}\) (centro da faixa de \(0{,}35\text{–}0{,}50\text{ s}\)[14]), perda integrada de downforce \(\eta_{down} = 0{,}12\)[14], constante de decaimento temporal \(\lambda = 0{,}65\text{ s}\) (*estimado* para concentrar o efeito abaixo de \(1{,}0\text{ s}\) e torná-lo residual, \(< 0{,}02\text{ s}\), acima de \(2{,}0\text{ s}\)) e corte de ar limpo em \(g > 3{,}0\text{ s}\).
 
 ### 3.4 Referências
 
@@ -208,6 +209,7 @@ m\,\frac{dv}{dt} = F_{trac}(v) - F_{drag}(v,\delta) - F_{roll}
 - Redução de arrasto: CFD mostra redução de arrasto de ~9,9% a 80 m/s (de 82,1 N para 73,9 N), acompanhada de perda de downforce de ~41,0% (44,6 N → 26,3 N) no mesmo elemento[20].
 - Ganho de tempo por volta em qualificação: da ordem de décimos de segundo a ~0,4–0,5 s por zona de DRS em pistas com retas longas (ex.: 0,436 s medido em simulação para Hockenheim)[21].
 - Regra de ativação: DRS liberado apenas dentro de zonas definidas quando o gap para o carro da frente é <1,0 s no ponto de detecção; desabilitado nas primeiras voltas/reinícios e em pista molhada[22][23].
+- **Parâmetros adotados em `backend/sim/physics.py` (M3):** coeficiente linear de ganho \(\gamma_{DRS} = 0{,}00045\text{ s/m}\) aplicado sobre a soma dos comprimentos \(L_{DRS}\) das zonas `drs_activation` do `TrackMap` (Contrato D4) quando elegível (`gap < 1,0 s`, pista seca, `track_status == "GREEN"`, volta \(\ge 2\) e fora da volta imediata pós-relargada de SC). Isso resulta em \(\approx 0{,}70\text{ s}\) em Interlagos (duas zonas longas, \(1.559\text{ m}\)), \(\approx 0{,}49\text{ s}\) em Monza (\(1.093\text{ m}\)) e \(\approx 0{,}04\text{ s}\) em Mônaco (\(87\text{ m}\)).
 
 ### 4.4 Referências
 
@@ -284,6 +286,10 @@ onde \(\sigma(\cdot)\) é a função logística, mapeando a severidade esperada 
 - Frequência de VSC: 21 deployments em 2022 vs. 10 em 2021 — aproximadamente 0,95 VSC por corrida em 2022, quase o dobro do ano anterior[25].
 - Isso sugere \(\lambda_{race}(SC) \approx 1{,}0\text{–}1{,}1\) e \(\lambda_{race}(VSC) \approx 0{,}9\text{–}1{,}0\) como pontos de partida realistas para calibração pós-2022, com forte variância entre circuitos (Mônaco, Bacu e Cingapura historicamente concentram mais incidentes que pistas de alta velocidade como Monza).
 - Lista de causas documentadas 2022 (Fandom/F1 Wiki): predominância de "Accident" e "Stranded/beached car" como causas, com duração média de SC pleno de 2–3 voltas e VSC de 0–2 voltas[26].
+- **Implementação e Máquina de Estados em `backend/sim/events.py` (M3):**
+  - **Perfil espacial NHPP (`build_track_risk_profile` / `sample_driver_lap_incident`):** \(\lambda_{base} = 2{,}4 \times 10^{-7}\text{ m}^{-1}\) (*hipótese de modelagem* calibrada sobre a média da temporada 2022[25]), ponderado por \(w_{braking} \in \{6{,}0\text{ (baixa)}, 11{,}0\text{ (média)}, 18{,}0\text{ (alta)}\}\) nas zonas `braking_zone` do `TrackMap` (\(1{,}0\) fora delas), \(w_{grip} = (1/\text{grip})^{1{,}5}\), \(w_{weather} \in \{1{,}0\text{ (seco)}, 1{,}8\text{ (úmido)}, 2{,}8\text{ (molhado)}\}\) e \(w_{aggression} = 0{,}7 + 0{,}6\cdot a\). Isso concentra \(\approx 65\%\) dos incidentes nas zonas de frenagem e reproduz a ordem de grandeza de \(\approx 0{,}9\text{–}1{,}3\) deployments de Safety Car por corrida de 20 carros \(\times\) 58 voltas (com Mônaco apresentando mais SC que Interlagos e Monza devido às escapatórias `muro`).
+  - **Modelo logístico de consequência (`incident_consequence_probabilities`):** \(\alpha_0 = -1{,}2\), com incremento por tipo de escapatória (`runoff`: `asfalto` \(= -0{,}7\), `brita` \(= +1{,}4\), `muro` \(= +2{,}0\)) e por severidade (`baixa` \(= -0{,}3\), `media` \(= 0{,}0\), `alta` \(= +0{,}5\)), decidindo entre `SC`, `VSC` e `TIME_LOSS` (perda de tempo local sem neutralização).
+  - **Máquina de estados (`SafetyCarStateMachine`):** opera sobre os estados `GREEN`, `VSC` (duração de 1–2 voltas, multiplicador de ritmo \(1{,}25\)) e `SC` (duração de 2–4 voltas, multiplicador de ritmo \(1{,}40\), compressão de pelotão a \(0{,}5\text{ s}\) por posição e bloqueio de DRS na volta imediata de relargada, `laps_since_restart = 0`).
 
 ### 5.5 Referências
 
