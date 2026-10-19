@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ApexSim — Editor de Pistas & Anotação Semântica (D4)</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Header Superior -->
+  <header>
+    <div class="brand">
+      <span class="logo-badge">APEXSIM</span>
+      <h1>Editor de Pistas <span class="contract-pill">Contrato D3 ➔ D4</span></h1>
+    </div>
+
+    <div class="controls-bar">
+      <div class="select-group">
+        <label for="circuitSelect">Circuito:</label>
+        <select id="circuitSelect">
+          <option value="interlagos">Interlagos (4.309 m)</option>
+          <option value="monza">Monza (5.793 m)</option>
+          <option value="monaco">Mônaco (3.337 m)</option>
+        </select>
+      </div>
+
+      <input type="file" id="d3FileInput" accept=".json" style="display: none;">
+      <button class="btn btn-sm" id="btnLoadD3" title="Carregar outro traçado simplificado (D3)">
+        📥 Carregar D3
+      </button>
+
+      <input type="file" id="d4FileInput" accept=".json" style="display: none;">
+      <button class="btn btn-sm" id="btnImportD4" title="Importar anotações existentes (D4)">
+        📂 Importar D4
+      </button>
+
+      <button class="btn btn-primary btn-sm" id="btnSaveToDisk" title="Salvar diretamente na pasta track_maps/ do repositório">
+        💾 Salvar no Projeto
+      </button>
+
+      <button class="btn btn-sm" id="btnExportD4" title="Baixar arquivo track_maps/{circuito}.json para sua máquina">
+        📥 Baixar JSON
+      </button>
+
+      <div class="validation-badge valid" id="validationStatusBadge" title="Clique para ver detalhes da validação">
+        <span id="validationIcon">✓</span>
+        <span id="validationText">Schema D4 Válido</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Container Principal -->
+  <div class="app-container">
+
+    <!-- Painel Visual Esquerdo: Traçado 2D e Régua 1D -->
+    <div class="viewport-panel">
+      <!-- Barra de ferramentas flutuante do Canvas -->
+      <div class="viewport-toolbar">
+        <div style="display: flex; gap: 2px; background: var(--bg-card); border-radius: 4px; padding: 2px; border: 1px solid var(--border-color); margin-right: 6px;">
+          <button class="btn btn-sm btn-primary" id="btnModeEdit" title="Modo Anotação: clique na pista seleciona Início/Fim">✏️ Anotar</button>
+          <button class="btn btn-sm" id="btnModeView" title="Modo Inspeção: clique na pista inspeciona zonas existentes sem alterar seleção">👁️ Inspecionar</button>
+        </div>
+        <button class="btn btn-sm" id="btnZoomIn" title="Aproximar (+)">＋</button>
+        <button class="btn btn-sm" id="btnZoomOut" title="Afastar (-)">－</button>
+        <button class="btn btn-sm" id="btnResetView" title="Centralizar traçado">⟲ Reset</button>
+        <button class="btn btn-sm" id="btnTogglePoints" title="Ligar/Desligar pontos">● Pontos</button>
+        <button class="btn btn-sm" id="btnToggleLabels" title="Ligar/Desligar nomes de curvas">🏷 Rótulos</button>
+      </div>
+
+      <!-- HUD Flutuante com Precisão do Cursor -->
+      <div class="hud-overlay" id="hudOverlay">
+        <div class="hud-item">
+          <span class="label">Distância:</span>
+          <span class="val distance" id="hudDistance">0.0 m</span>
+        </div>
+        <div class="hud-item">
+          <span class="label">Ponto D3:</span>
+          <span class="val" id="hudPointIndex">#0 / 0</span>
+        </div>
+        <div class="hud-item">
+          <span class="label">Coord (X, Y):</span>
+          <span class="val" id="hudCoords">0.0, 0.0</span>
+        </div>
+        <div class="hud-item" id="hudActiveZonesRow">
+          <span class="label">Zonas Ativas:</span>
+          <span class="val" id="hudActiveZones" style="font-size: 10px; color: var(--accent-gold);">-</span>
+        </div>
+      </div>
+
+      <!-- Canvas 2D Interativo -->
+      <div class="canvas-container" id="canvasContainer">
+        <canvas id="trackCanvas"></canvas>
+      </div>
+
+      <!-- Linha do Tempo 1D Sincronizada -->
+      <div class="timeline-section">
+        <div class="timeline-header">
+          <span>LINHA LINEAR DA PISTA (1D CONTÍNUO)</span>
+          <span id="timelineLengthMeta">0 m / 0 m (100%)</span>
+        </div>
+        <div class="timeline-canvas-wrapper" id="timelineWrapper">
+          <canvas id="timelineCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Painel Lateral Direito: Formulário e Gerenciador de Zonas -->
+    <div class="sidebar-panel">
+
+      <!-- Seção: Intervalo e Criação de Zona -->
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span id="formModeTitle">Anotar Nova Zona</span>
+          <span id="pointModeBadge" class="contract-pill">Modo Intervalo</span>
+        </div>
+
+        <!-- Seletor de Intervalo -->
+        <div class="selection-box">
+          <div class="range-inputs">
+            <div class="input-field">
+              <label for="inputStartM">Início (start_m):</label>
+              <div class="input-with-steppers">
+                <input type="number" id="inputStartM" min="0" step="1" value="0">
+                <button class="stepper-btn" id="btnStartMinus10">-10</button>
+                <button class="stepper-btn" id="btnStartPlus10">+10</button>
+              </div>
+            </div>
+
+            <div class="input-field">
+              <label for="inputEndM">Fim (end_m):</label>
+              <div class="input-with-steppers">
+                <input type="number" id="inputEndM" min="0" step="1" value="100">
+                <button class="stepper-btn" id="btnEndMinus10">-10</button>
+                <button class="stepper-btn" id="btnEndPlus10">+10</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="selection-meta">
+            <span>Extensão selecionada:</span>
+            <span class="selection-delta" id="selectionDeltaText">100 m</span>
+          </div>
+
+          <div style="margin-top: 8px; display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" id="checkSinglePoint">
+            <label for="checkSinglePoint" style="font-size: 11px; color: var(--text-muted); cursor: pointer;">
+              Zona pontual única (start_m == end_m)
+            </label>
+          </div>
+        </div>
+
+        <!-- Formulário de Propriedades da Zona -->
+        <form id="zoneForm" class="zone-form" onsubmit="return false;">
+          <div class="form-group">
+            <label for="selectZoneType">Tipo de Zona (Contrato D4):</label>
+            <select id="selectZoneType" class="form-input">
+              <option value="sector">Setor de Cronometragem (sector)</option>
+              <option value="corner">Curva Oficial (corner)</option>
+              <option value="braking_zone">Zona de Frenagem (braking_zone)</option>
+              <option value="straight">Trecho de Reta (straight)</option>
+              <option value="drs_detection">Ponto de Detecção DRS (drs_detection)</option>
+              <option value="drs_activation">Zona de Ativação DRS (drs_activation)</option>
+              <option value="pit_entry">Entrada dos Boxes (pit_entry)</option>
+              <option value="pit_lane">Corredor do Pit Lane (pit_lane)</option>
+              <option value="pit_exit">Saída dos Boxes (pit_exit)</option>
+              <option value="overtaking_spot">Ponto de Ultrapassagem (overtaking_spot)</option>
+            </select>
+          </div>
+
+          <!-- Propriedades Específicas Dinâmicas -->
+          <div id="dynamicPropsContainer" class="props-container">
+            <!-- Renderizado dinamicamente via JS -->
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-primary" id="btnSaveZone" style="flex: 1;">
+              ➕ Adicionar Zona
+            </button>
+            <button type="button" class="btn btn-sm" id="btnCancelEdit" style="display: none;">
+              Cancelar
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Seção: Lista de Zonas Anotadas -->
+      <div class="sidebar-section" style="flex: 1; display: flex; flex-direction: column;">
+        <div class="section-title">
+          <span>Zonas Cadastradas (<span id="zonesCount">0</span>)</span>
+          <button class="btn btn-danger btn-sm" id="btnClearAllZones">Limpar Todas</button>
+        </div>
+
+        <!-- Filtros Rápidos -->
+        <div class="zones-filter-bar">
+          <button class="filter-chip active" data-filter="all">Todas</button>
+          <button class="filter-chip" data-filter="sector">Setores</button>
+          <button class="filter-chip" data-filter="drs">DRS</button>
+          <button class="filter-chip" data-filter="pit">Boxes</button>
+          <button class="filter-chip" data-filter="braking_zone">Frenagens</button>
+          <button class="filter-chip" data-filter="corner">Curvas</button>
+        </div>
+
+        <!-- Lista Rolável de Zonas -->
+        <div class="zones-list" id="zonesListContainer">
+          <!-- Renderizado dinamicamente via JS -->
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal de Diagnóstico de Validação D4 -->
+  <div class="modal-backdrop hidden" id="validationModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 style="font-size: 15px;">Diagnóstico de Validação do Contrato D4</h3>
+        <button class="btn-icon" id="btnCloseValidationModal">✕</button>
+      </div>
+      <div class="modal-body" id="validationModalBody">
+        <!-- Lista de regras e status -->
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary btn-sm" id="btnOkValidationModal">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="circuits_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+

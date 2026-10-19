@@ -1,9 +1,10 @@
-.PHONY: up down logs seed plot migrate migration psql test lint fmt clean
+.PHONY: up down logs seed circuitos plot kaggle dados migrate migration psql test lint fmt clean
 
 up:
 	docker compose up --build -d
 	@echo "API:  http://localhost:8000/health"
 	@echo "Web:  http://localhost:3000"
+	@echo "Mock: ws://localhost:8080"
 
 down:
 	docker compose down
@@ -11,15 +12,32 @@ down:
 logs:
 	docker compose logs -f
 
-# Ingestão de dados. Hoje gera a geometria dos circuitos (contrato D3);
-# a partir da semana 5 popula também o banco.
+# Popula o banco de desenvolvimento com a referência: compostos, os 3 circuitos
+# do projeto e o grid de 2024 (piloto e equipe). Aplica as migrations antes, então
+# funciona num banco vazio. Idempotente: rodar de novo não duplica nada.
 seed:
+	docker compose run --rm api sh -c "alembic upgrade head && python -m db.seed"
+
+# Regenera a geometria dos circuitos (contrato D3) a partir do FastF1. Precisa de
+# rede e é lento na primeira vez; os JSONs de circuits/ já estão versionados.
+circuitos:
 	docker compose run --rm api python -m app.pipeline.circuits
 
 # Desenha os circuitos para conferência visual — o critério "o traçado é
 # reconhecível" não se automatiza, alguém precisa olhar.
 plot:
 	docker compose run --rm api python -m app.pipeline.plotar
+
+# Baixa os 3 datasets do Kaggle para data/raw/ (fora do git). Precisa de
+# KAGGLE_API_TOKEN no .env. Idempotente: o que já foi baixado é pulado.
+kaggle:
+	docker compose run --rm --no-deps --user $$(id -u):$$(id -g) -e HOME=/tmp api python -m app.pipeline.kaggle_download
+
+# Reconcilia as fontes e gera as curvas de degradação (entrega D5). A saída vai
+# para data/mapeamentos/ e data/curvas_degradacao/, que SÃO versionados.
+dados: kaggle
+	docker compose run --rm --no-deps --user $$(id -u):$$(id -g) -e HOME=/tmp -e MPLCONFIGDIR=/tmp/mpl api python -m app.pipeline.reconciliacao
+	docker compose run --rm --no-deps --user $$(id -u):$$(id -g) -e HOME=/tmp -e MPLCONFIGDIR=/tmp/mpl api python -m app.pipeline.degradacao
 
 # Aplica no banco de desenvolvimento as migrations que ainda não rodaram.
 # O `make up` já faz isso sozinho; use este alvo para rodar sem subir a API.
@@ -39,6 +57,10 @@ psql:
 
 test:
 	docker compose run --rm api pytest
+
+# Validação lógica dos mapas semânticos de pista (contrato D4).
+validate-tracks:
+	docker compose run --rm api python -m app.pipeline.validate_track_map
 
 lint:
 	docker compose run --rm api ruff check .

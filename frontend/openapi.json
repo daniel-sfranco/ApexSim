@@ -1,0 +1,588 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ApexSim API",
+    "description": "Especificação formal de API e Contratos de Dados (D2) do ApexSim — Simulador de Fórmula 1.",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Servidor de Desenvolvimento Local"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Healthcheck da API",
+        "description": "Responde 200 enquanto o processo da API estiver ativo.",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "API saudável",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/races": {
+      "post": {
+        "summary": "Criar e inicializar uma corrida",
+        "description": "Instancia uma nova corrida com grid, circuito, clima e seed selecionados.",
+        "operationId": "createRace",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRaceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Corrida criada com sucesso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateRaceResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/races/{race_id}": {
+      "get": {
+        "summary": "Consultar estado de uma corrida",
+        "operationId": "getRace",
+        "parameters": [
+          {
+            "name": "race_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalhes da corrida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RaceDetailsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Corrida não encontrada"
+          }
+        }
+      }
+    },
+    "/api/races/{race_id}/results": {
+      "get": {
+        "summary": "Obter resultados e analytics pós-corrida",
+        "operationId": "getRaceResults",
+        "parameters": [
+          {
+            "name": "race_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Classificação final e histórico de voltas",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RaceResultsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Corrida não encontrada"
+          }
+        }
+      }
+    },
+    "/circuits/{circuit_id}.json": {
+      "get": {
+        "summary": "Obter geometria simplificada do circuito (Contrato D3)",
+        "operationId": "getCircuitGeometry",
+        "parameters": [
+          {
+            "name": "circuit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Polyline e metadados do circuito",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CircuitGeometry"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "ok"
+          }
+        }
+      },
+      "TyreCompound": {
+        "type": "string",
+        "enum": ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET", "UNKNOWN"],
+        "description": "Composto de pneu montado no carro."
+      },
+      "TrackStatus": {
+        "type": "string",
+        "enum": ["GREEN", "YELLOW", "SAFETY_CAR", "RED"],
+        "description": "Estado geral de bandeira da pista."
+      },
+      "PitStatus": {
+        "type": "string",
+        "enum": ["NONE", "ENTERING", "IN_PIT", "EXITING"],
+        "description": "Situação do piloto em relação ao pit lane."
+      },
+      "WeatherCondition": {
+        "type": "string",
+        "enum": ["DRY", "DAMP", "WET"],
+        "description": "Condição climática predominante."
+      },
+      "CreateRaceRequest": {
+        "type": "object",
+        "required": ["circuit_id", "total_laps", "seed"],
+        "properties": {
+          "circuit_id": {
+            "type": "string",
+            "description": "Slug do circuito (ex: interlagos, monza, monaco).",
+            "example": "interlagos"
+          },
+          "total_laps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 53,
+            "example": 53
+          },
+          "seed": {
+            "type": "integer",
+            "default": 42,
+            "example": 42
+          },
+          "weather": {
+            "$ref": "#/components/schemas/WeatherCondition",
+            "default": "DRY"
+          },
+          "track_temp": {
+            "type": "number",
+            "default": 32.0,
+            "example": 32.0
+          },
+          "grid": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lista ordenada de códigos FIA dos 20 pilotos no grid de largada.",
+            "example": ["VER", "NOR", "LEC", "PIA", "SAI", "HAM", "RUS", "PER", "ALO", "STR", "TSU", "LAW", "GAS", "OCO", "ALB", "COL", "BOT", "ZHO", "HUL", "MAG"]
+          },
+          "initial_tyres": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TyreCompound"
+            },
+            "description": "Mapeamento opcional driver_id -> TyreCompound para largada."
+          }
+        }
+      },
+      "CreateRaceResponse": {
+        "type": "object",
+        "required": ["race_id", "circuit_id", "total_laps", "seed", "ws_url", "status"],
+        "properties": {
+          "race_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+          },
+          "circuit_id": {
+            "type": "string",
+            "example": "interlagos"
+          },
+          "total_laps": {
+            "type": "integer",
+            "example": 53
+          },
+          "seed": {
+            "type": "integer",
+            "example": 42
+          },
+          "ws_url": {
+            "type": "string",
+            "example": "/ws/races/3fa85f64-5717-4562-b3fc-2c963f66afa6"
+          },
+          "status": {
+            "type": "string",
+            "example": "configured"
+          }
+        }
+      },
+      "RaceDetailsResponse": {
+        "type": "object",
+        "required": ["race_id", "circuit_id", "current_lap", "total_laps", "status", "created_at"],
+        "properties": {
+          "race_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "circuit_id": {
+            "type": "string"
+          },
+          "current_lap": {
+            "type": "integer"
+          },
+          "total_laps": {
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DriverUpdate": {
+        "type": "object",
+        "required": [
+          "driver_id",
+          "name",
+          "team",
+          "position",
+          "gap_to_leader",
+          "tyre_compound",
+          "tyre_age",
+          "fuel_load_kg",
+          "pit_status",
+          "pit_stops_made",
+          "is_retired",
+          "drs_active",
+          "distance_m"
+        ],
+        "properties": {
+          "driver_id": {
+            "type": "string",
+            "example": "VER"
+          },
+          "name": {
+            "type": "string",
+            "example": "Max Verstappen"
+          },
+          "team": {
+            "type": "string",
+            "example": "Red Bull Racing"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "example": 1
+          },
+          "gap_to_leader": {
+            "type": "number",
+            "example": 0.0
+          },
+          "gap_to_ahead": {
+            "type": ["number", "null"],
+            "example": null
+          },
+          "last_lap_time": {
+            "type": ["number", "null"],
+            "example": 82.415
+          },
+          "tyre_compound": {
+            "$ref": "#/components/schemas/TyreCompound"
+          },
+          "tyre_age": {
+            "type": "integer",
+            "example": 18
+          },
+          "fuel_load_kg": {
+            "type": "number",
+            "example": 72.1
+          },
+          "pit_status": {
+            "$ref": "#/components/schemas/PitStatus"
+          },
+          "pit_stops_made": {
+            "type": "integer",
+            "example": 0
+          },
+          "is_retired": {
+            "type": "boolean",
+            "example": false
+          },
+          "drs_active": {
+            "type": "boolean",
+            "example": false
+          },
+          "distance_m": {
+            "type": "number",
+            "example": 1240.5
+          }
+        }
+      },
+      "LapUpdate": {
+        "type": "object",
+        "required": [
+          "type",
+          "race_id",
+          "current_lap",
+          "total_laps",
+          "track_status",
+          "weather",
+          "track_temp",
+          "drivers"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["lap_update"],
+            "example": "lap_update"
+          },
+          "race_id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+          },
+          "current_lap": {
+            "type": "integer",
+            "example": 18
+          },
+          "total_laps": {
+            "type": "integer",
+            "example": 53
+          },
+          "track_status": {
+            "$ref": "#/components/schemas/TrackStatus"
+          },
+          "weather": {
+            "$ref": "#/components/schemas/WeatherCondition"
+          },
+          "track_temp": {
+            "type": "number",
+            "example": 32.0
+          },
+          "drivers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DriverUpdate"
+            }
+          }
+        }
+      },
+      "EventUpdate": {
+        "type": "object",
+        "required": [
+          "type",
+          "race_id",
+          "lap",
+          "event_type",
+          "involved_drivers",
+          "description"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["event_update"],
+            "example": "event_update"
+          },
+          "race_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lap": {
+            "type": "integer",
+            "example": 18
+          },
+          "event_type": {
+            "type": "string",
+            "example": "SAFETY_CAR_DEPLOYED"
+          },
+          "involved_drivers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": ["SAR"]
+          },
+          "zone_id": {
+            "type": ["string", "null"],
+            "example": "s_do_senna_brake"
+          },
+          "description": {
+            "type": "string",
+            "example": "Acidente no S do Senna. Escapatória de brita. Safety Car acionado."
+          }
+        }
+      },
+      "ClientCommand": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["play", "pause", "resume", "set_speed"],
+            "example": "pause"
+          },
+          "speed_multiplier": {
+            "type": "number",
+            "example": 2.0
+          }
+        }
+      },
+      "CircuitPoint": {
+        "type": "object",
+        "required": ["x", "y", "distance_m"],
+        "properties": {
+          "x": {
+            "type": "number",
+            "example": 0.0
+          },
+          "y": {
+            "type": "number",
+            "example": 0.0
+          },
+          "distance_m": {
+            "type": "number",
+            "example": 0.0
+          }
+        }
+      },
+      "CircuitGeometry": {
+        "type": "object",
+        "required": ["circuit_id", "length_m", "points"],
+        "properties": {
+          "circuit_id": {
+            "type": "string",
+            "example": "interlagos"
+          },
+          "length_m": {
+            "type": "integer",
+            "example": 4309
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CircuitPoint"
+            }
+          },
+          "meta": {
+            "type": "object"
+          }
+        }
+      },
+      "DriverFinalResult": {
+        "type": "object",
+        "required": ["position", "driver_id", "name", "team", "total_race_time", "pit_stops_made"],
+        "properties": {
+          "position": {
+            "type": "integer",
+            "example": 1
+          },
+          "driver_id": {
+            "type": "string",
+            "example": "VER"
+          },
+          "name": {
+            "type": "string",
+            "example": "Max Verstappen"
+          },
+          "team": {
+            "type": "string",
+            "example": "Red Bull Racing"
+          },
+          "total_race_time": {
+            "type": "number",
+            "example": 4820.45
+          },
+          "gap_to_leader": {
+            "type": "number",
+            "example": 0.0
+          },
+          "pit_stops_made": {
+            "type": "integer",
+            "example": 2
+          },
+          "fastest_lap": {
+            "type": ["number", "null"],
+            "example": 80.124
+          },
+          "is_retired": {
+            "type": "boolean",
+            "example": false
+          }
+        }
+      },
+      "RaceResultsResponse": {
+        "type": "object",
+        "required": ["race_id", "circuit_id", "total_laps", "classification"],
+        "properties": {
+          "race_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "circuit_id": {
+            "type": "string"
+          },
+          "total_laps": {
+            "type": "integer"
+          },
+          "classification": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DriverFinalResult"
+            }
+          }
+        }
+      }
+    }
+  }
+}

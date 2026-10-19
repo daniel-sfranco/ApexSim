@@ -22,6 +22,7 @@ Pronto. Verifique:
 - API — <http://localhost:8000/health> responde `{"status": "ok"}`
 - Docs da API — <http://localhost:8000/docs>
 - Web — <http://localhost:3000>
+- Mock WS — `ws://localhost:8080`
 
 ## Comandos
 
@@ -30,7 +31,10 @@ Pronto. Verifique:
 | `make up` | Sobe api, web e banco |
 | `make down` | Derruba os serviços |
 | `make logs` | Acompanha os logs |
-| `make seed` | Roda a ingestão de dados (geometria dos circuitos) |
+| `make seed` | Popula o banco com a referência (compostos, circuitos, grid de 2024). Idempotente |
+| `make circuitos` | Regenera a geometria dos circuitos (D3) a partir do FastF1: precisa de rede |
+| `make kaggle` | Baixa os datasets do Kaggle para `data/raw/` (precisa de `KAGGLE_API_TOKEN` no `.env`) |
+| `make dados` | Reconcilia as fontes e gera as curvas de degradação ([`docs/dados-kaggle.md`](docs/dados-kaggle.md)) |
 | `make migrate` | Aplica as migrations pendentes no banco de desenvolvimento |
 | `make migration m="..."` | Gera uma migration a partir das mudanças em `backend/db/models.py` |
 | `make psql` | Abre um `psql` no banco de desenvolvimento |
@@ -44,7 +48,7 @@ Pronto. Verifique:
 | Serviço | Porta | Stack |
 |---|---|---|
 | `api` | 8000 | Python 3.11, FastAPI, uv |
-| `web` | 3000 | Node 20 — scaffold Next.js em andamento |
+| `web` | 3000, 8080 | Node 20 — React (Vite) + Mock WebSocket Server |
 | `db` | 5433 (host) | PostgreSQL 16 |
 
 O cache do FastF1 fica num volume nomeado (`fastf1_cache`). Não apague sem
@@ -72,6 +76,7 @@ backend/     API FastAPI, pipeline de dados e camada de banco (db/, migrations/)
 frontend/    Aplicação web
 circuits/    Geometria dos circuitos (contrato D3)
 data/raw/    Datasets brutos — fora do controle de versão
+data/mapeamentos/, data/curvas_degradacao/   Saídas da ingestão (versionadas)
 docs/        Documentação técnica por trilha
 ```
 
