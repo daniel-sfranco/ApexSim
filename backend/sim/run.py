@@ -48,8 +48,8 @@ def montar_grid_inicial() -> RaceState:
             name=name,
             team=team,
             position=grid_position,
-            lap_distance_covered = 0.0,
-            total_distance_covered = 0.0,
+            lap_distance_covered=0.0,
+            total_distance_covered=0.0,
             current_lap=0,
             last_lap_time=None,
             gap_to_leader=0.0 if grid_position == 1 else float(grid_position - 1) * 0.3,
@@ -60,8 +60,9 @@ def montar_grid_inicial() -> RaceState:
             pit_status=PitStatus.NONE,
             pit_stops_made=0,
             is_retired=False,
-            base_velocity=20.0,  # Velocidade base de volta, em metros por segundo
-            lap_time_sum=0.0
+            base_velocity=20.0,  # Velocidade base de volta em m/s
+            lap_time_sum=0.0,
+            drs_active=False,
         )
 
     return RaceState(
@@ -97,7 +98,7 @@ def main():
     laps_alvo = min(args.laps, race_state.total_laps)
     while race_state.current_lap < laps_alvo:
         tick(race_state, delta_time=10.0, track_length=3337)
-        print(f"{race_state.elapsed_time:.1f}s #########################################################################")
+        print(f"{race_state.elapsed_time:.1f}s " + "#" * 50)
     race_state.is_finished = race_state.current_lap >= race_state.total_laps
 
 

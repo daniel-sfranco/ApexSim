@@ -1,21 +1,12 @@
 """
-Testes do Núcleo de Estado do Motor de Simulação (Fase 1)
-==========================================================
+Testes do Núcleo de Estado do Motor de Simulação (Fase 1 e Contrato D2)
+========================================================================
 
-Como tick() ainda não tem lógica implementada (é só contrato), estes
-testes NÃO validam física de corrida. Eles validam duas coisas:
-
-1. Que as estruturas de dados (RaceState, DriverState, LapResult)
-   conseguem representar corretamente uma grid completa de 20 pilotos,
-   sem perda ou corrupção de dados.
-2. Que o contrato de tick() está sendo respeitado: ele deve aceitar
-   (RaceState, delta_time) e, nesta fase, sempre levantar
-   NotImplementedError — é assim que garantimos que ninguém vai
-   confundir "ainda não implementado" com "implementado e retornando
-   estado errado".
-
-Rodar com:
-    pytest test_simulation_engine.py -v
+Valida:
+1. Estruturas de dados (RaceState, DriverState, LapResult) representando
+   corretamente um grid completo de 20 pilotos sem perda de dados.
+2. Contrato de tick(state, delta_time, track_length).
+3. Serialização correta para o envelope formal lap_update do Contrato D2.
 """
 
 from dataclasses import FrozenInstanceError
@@ -29,18 +20,11 @@ from sim.state import (
     RaceState,
     TrackStatus,
     TyreCompound,
+    format_lap_update,
     tick,
 )
 
-# ---------------------------------------------------------------------------
-# FIXTURES / HELPERS
-# ---------------------------------------------------------------------------
-# Uma fixture do pytest é uma função que prepara dados/objetos reutilizáveis
-# para os testes. Aqui, montamos uma grid de 20 pilotos uma única vez e
-# reaproveitamos em vários testes, evitando repetir o mesmo boilerplate.
-
-# Grid fictícia com 20 pilotos (2 por equipe, 10 equipes), para ter volume
-# realista de um grid de F1 completo.
+# Grid fictícia com 20 pilotos (2 por equipe, 10 equipes)
 GRID_20_PILOTOS = [
     ("VER", "Max Verstappen", "Red Bull"),
     ("PER", "Sergio Pérez", "Red Bull"),
@@ -66,12 +50,7 @@ GRID_20_PILOTOS = [
 
 
 def montar_grid_inicial() -> RaceState:
-    """Constrói um RaceState de largada com 20 pilotos em grid.
-
-    Todos começam na volta 0, sem gap acumulado, pneu MEDIUM novo,
-    tanque cheio e fora do pit. Serve como "estado zero" para os testes
-    e, futuramente, como ponto de partida real da simulação.
-    """
+    """Constrói um RaceState de largada com 20 pilotos em grid."""
     drivers = {}
     for grid_position, (driver_id, name, team) in enumerate(GRID_20_PILOTOS, start=1):
         drivers[driver_id] = DriverState(
@@ -79,6 +58,8 @@ def montar_grid_inicial() -> RaceState:
             name=name,
             team=team,
             position=grid_position,
+            lap_distance_covered=0.0,
+            total_distance_covered=0.0,
             current_lap=0,
             last_lap_time=None,
             gap_to_leader=0.0 if grid_position == 1 else float(grid_position - 1) * 0.3,
@@ -89,8 +70,9 @@ def montar_grid_inicial() -> RaceState:
             pit_status=PitStatus.NONE,
             pit_stops_made=0,
             is_retired=False,
-            total_race_time=0.0,
-            base_lap_time=90.0 + grid_position * 0.1,  # Tempo base de volta, em segundos
+            base_velocity=20.0,
+            lap_time_sum=0.0,
+            drs_active=False,
         )
 
     return RaceState(
@@ -106,11 +88,7 @@ def montar_grid_inicial() -> RaceState:
 
 @pytest.fixture
 def race_state() -> RaceState:
-    """Fixture do pytest: devolve um RaceState novo a cada teste.
-
-    Recriar o estado em cada teste (em vez de compartilhar uma instância)
-    evita que um teste "contamine" o estado usado por outro.
-    """
+    """Fixture do pytest: devolve um RaceState novo a cada teste."""
     return montar_grid_inicial()
 
 
@@ -167,16 +145,12 @@ def test_corrida_comeca_na_volta_zero_e_nao_finalizada(race_state: RaceState):
 # ---------------------------------------------------------------------------
 # TESTE DE HISTÓRICO
 # ---------------------------------------------------------------------------
-# Como tick() não está implementado, este teste NÃO chama tick(). Ele
-# valida que, se o histórico for populado manualmente (como o motor fará
-# no futuro), a estrutura de LapResult comporta os 20 registros de uma
-# volta completa, mantendo a ordenação por posição.
 
 
 def test_lap_history_comporta_resultado_de_volta_completa_para_20_pilotos(
     race_state: RaceState,
 ):
-    """Simula o preenchimento de lap_history para a Volta 1, sem tick()."""
+    """Simula o preenchimento de lap_history para a Volta 1."""
     volta_1 = []
     for driver in sorted(race_state.drivers.values(), key=lambda d: d.position):
         volta_1.append(
@@ -197,7 +171,6 @@ def test_lap_history_comporta_resultado_de_volta_completa_para_20_pilotos(
     race_state.lap_history.extend(volta_1)
 
     assert len(race_state.lap_history) == 20
-    # Garante que o histórico manteve a ordem de posição e não misturou pilotos.
     posicoes_no_historico = [r.position for r in race_state.lap_history]
     assert posicoes_no_historico == list(range(1, 21))
 
@@ -226,7 +199,57 @@ def test_lap_result_e_imutavel(race_state: RaceState):
 
 
 def test_tick_aumenta_numero_de_voltas(race_state: RaceState):
-    """Testa o comportamento do tick() para uma volta completa."""
-    # Simula o avanço de uma volta
-    tick(race_state, delta_time=1.0)
+    """Testa o comportamento do tick() avançando tempo suficiente para cruzar a linha."""
+    # 20 m/s * 200s = 4000m > 3337m
+    tick(race_state, delta_time=200.0, track_length=3337.0)
     assert race_state.current_lap == 1
+    assert len(race_state.lap_history) > 0
+
+
+# ---------------------------------------------------------------------------
+# TESTE DE SERIALIZAÇÃO: Contrato D2 (lap_update)
+# ---------------------------------------------------------------------------
+
+
+def test_format_lap_update_gera_envelope_valido(race_state: RaceState):
+    """Garante que format_lap_update constrói o envelope estrito do Contrato D2."""
+    envelope = format_lap_update(
+        race_state,
+        race_id="test-uuid",
+        weather="DRY",
+        track_temp=35.0,
+    )
+    assert envelope["type"] == "lap_update"
+    assert envelope["race_id"] == "test-uuid"
+    assert envelope["current_lap"] == 0
+    assert envelope["total_laps"] == 58
+    assert envelope["track_status"] == "GREEN"
+    assert envelope["weather"] == "DRY"
+    assert envelope["track_temp"] == 35.0
+
+    drivers = envelope["drivers"]
+    assert len(drivers) == 20
+    # Ordenado por posição
+    assert [d["position"] for d in drivers] == list(range(1, 21))
+
+    # Verifica campos obrigatórios em cada piloto
+    p1 = drivers[0]
+    campos_esperados = [
+        "driver_id",
+        "name",
+        "team",
+        "position",
+        "gap_to_leader",
+        "gap_to_ahead",
+        "last_lap_time",
+        "tyre_compound",
+        "tyre_age",
+        "fuel_load_kg",
+        "pit_status",
+        "pit_stops_made",
+        "is_retired",
+        "drs_active",
+        "distance_m",
+    ]
+    for campo in campos_esperados:
+        assert campo in p1, f"Campo {campo} ausente no piloto do envelope"

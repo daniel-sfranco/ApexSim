@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import health
 from app.config import CIRCUITS_DIR, TRACK_EDITOR_DIR, TRACK_MAPS_DIR
+from app.websocket import races as ws_races
 
 app = FastAPI(
     title="ApexSim API",
@@ -13,6 +14,7 @@ app = FastAPI(
 )
 
 app.include_router(health.router, tags=["infra"])
+app.include_router(ws_races.router, tags=["websocket"])
 
 
 @app.post("/api/track-maps/{circuit_id}")

@@ -2,13 +2,9 @@
 Motor de Simulação de F1 — Núcleo de Estado (Fase 1)
 ======================================================
 
-Este módulo define apenas o CONTRATO de dados e comportamento do motor de
-simulação: as estruturas que carregam o estado da corrida e a assinatura
-da função que avança a simulação em um "tick" (passo de tempo/volta).
-
-Nenhuma lógica de simulação é implementada aqui. O objetivo é fechar a
-interface (quais dados existem, quais tipos têm, o que tick() recebe e
-devolve) antes de implementar as regras de física/estratégia.
+Este módulo define o CONTRATO de dados e comportamento do motor de
+simulação: as estruturas que carregam o estado da corrida, a assinatura
+da função tick() e a serialização para o envelope formal do Contrato D2.
 """
 
 import random
@@ -137,13 +133,13 @@ class DriverState:
         pit_status: Estado atual do piloto em relação ao pit lane.
         pit_stops_made: Número total de paradas já realizadas na corrida.
         is_retired: True se o piloto abandonou a corrida.
-        base_velocity: Velocidade base de volta, em metros por segundo (para simulação do tempo, provisório)
-        lap_time_sum: Soma dos tempos de volta para cálculo do tempo de volta
+        base_velocity: Velocidade base de volta em m/s (simulação simplificada).
+        lap_time_sum: Soma dos tempos de volta para cálculo do tempo de volta.
         lap_distance_covered: Distância percorrida na volta atual, em metros
             (zero ao cruzar a linha de chegada; volta ao zero a cada volta).
         total_distance_covered: Distância total acumulada na corrida, em
             metros (sempre cresce; usada para ordenar as posições).
-
+        drs_active: True quando o piloto está com asa móvel (DRS) aberta.
     """
 
     driver_id: str
@@ -162,8 +158,9 @@ class DriverState:
     pit_status: PitStatus
     pit_stops_made: int
     is_retired: bool
-    base_velocity: float  # Velocidade base de volta, em metros por segundo (para simulação simplificada)
+    base_velocity: float  # Velocidade base de volta em m/s (simulação simplificada)
     lap_time_sum: float = 0.0  # Soma dos tempos de volta para cálculo do tempo de volta
+    drs_active: bool = False  # True quando o piloto está com asa móvel (DRS) aberta
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +207,12 @@ class RaceState:
 # ---------------------------------------------------------------------------
 
 
-def tick(state: RaceState, delta_time: float, track_length: float) -> RaceState:
+def tick(
+    state: RaceState,
+    delta_time: float,
+    track_length: float,
+    rng: random.Random | None = None,
+) -> RaceState:
     """Avança a simulação em um passo de tempo (ou de volta).
 
     Este é o contrato central do motor: dado um RaceState e um intervalo
@@ -223,26 +225,25 @@ def tick(state: RaceState, delta_time: float, track_length: float) -> RaceState:
         delta_time: Quantidade de tempo, em segundos, que este tick deve
             avançar na simulação. Permite tanto um motor orientado a
             tempo fixo (ex.: 0.1s por tick) quanto orientado a eventos.
+        track_length: Comprimento total da pista em metros.
+        rng: Gerador aleatório determinístico (opcional). Se omitido, usa
+            o módulo `random` global.
 
     Returns:
-        RaceState: O novo estado da corrida após aplicar este tick,
-        incluindo atualizações de posição, tempos, gaps, pneus,
-        combustível e status de pit de cada piloto, além de qualquer
-        LapResult novo que tenha sido gerado neste passo (apenas para
-        pilotos que concluíram uma volta durante este tick).
-
+        RaceState: O novo estado da corrida após aplicar este tick.
     """
     state.elapsed_time += delta_time
+    rand_gauss = rng.gauss if rng is not None else random.gauss
 
     # --- 1) Avança a distância de cada piloto e detecta conclusões de volta.
     # A distância é atualizada com base na velocidade base e em um ruído
-    # aleatório (exatamente uma chamada de random.gauss por piloto por tick,
+    # aleatório (exatamente uma chamada de gauss por piloto por tick,
     # em ordem fixa de iteração — necessário para que a mesma seed produza
     # sempre a mesma corrida).
     voltas_concluidas: list[tuple[DriverState, int, float]] = []
     for driver in state.drivers.values():
         distancia_inicio_tick = driver.lap_distance_covered
-        step_distance = (driver.base_velocity + random.gauss(0, 1)) * delta_time
+        step_distance = (driver.base_velocity + rand_gauss(0, 1)) * delta_time
         driver.lap_distance_covered += step_distance
         driver.total_distance_covered += step_distance
 
@@ -256,13 +257,10 @@ def tick(state: RaceState, delta_time: float, track_length: float) -> RaceState:
             # cruzamento em vez do fim do tick — evita quantizar tempos de
             # volta e gaps em múltiplos de delta_time.
             distancia_ao_cruzamento = (
-                track_length - distancia_inicio_tick
-                + (cruzamentos - 1) * track_length
+                track_length - distancia_inicio_tick + (cruzamentos - 1) * track_length
             )
             fracao = distancia_ao_cruzamento / step_distance
-            instante_cruzamento = (
-                state.elapsed_time - delta_time + fracao * delta_time
-            )
+            instante_cruzamento = state.elapsed_time - delta_time + fracao * delta_time
             # Tempo da volta = instante deste cruzamento menos o instante do
             # cruzamento anterior. Na primeira volta lap_time_sum é 0, então
             # o resultado é o tempo decorrido desde a largada — correto
@@ -350,19 +348,72 @@ def tick(state: RaceState, delta_time: float, track_length: float) -> RaceState:
             )
         )
 
-    for driver in ordenados:
-        ultimo_tempo = (
-            f"{driver.last_lap_time:.2f}s"
-            if driver.last_lap_time is not None
-            else "N/A"
+    return state
+
+
+# ---------------------------------------------------------------------------
+# SERIALIZAÇÃO PARA CONTRATO D2 (lap_update)
+# ---------------------------------------------------------------------------
+
+
+def format_lap_update(
+    state: RaceState,
+    race_id: str,
+    weather: str = "DRY",
+    track_temp: float = 32.0,
+) -> dict:
+    """Gera o envelope formal de telemetria `lap_update` (Contrato D2).
+
+    Retorna um dicionário JSON-serializável com os 20 pilotos ordenados
+    por posição atual (1..20), contendo todos os campos exigidos pela
+    Timing Tower do frontend e pelo schema OpenAPI oficial.
+    """
+    drivers_ordenados = sorted(state.drivers.values(), key=lambda d: d.position)
+    drivers_list = []
+    for d in drivers_ordenados:
+        compound_str = (
+            d.tyre_compound.name
+            if isinstance(d.tyre_compound, TyreCompound)
+            else str(d.tyre_compound)
         )
-        print(
-            f"Driver {driver.driver_id}: Lap {driver.current_lap}, "
-            f"Last Lap Time {ultimo_tempo}, "
-            f"Lap time sum {driver.lap_time_sum:.2f}s, "
-            f"Distance Covered {driver.total_distance_covered:.2f}m, "
-            f"Position {driver.position}, Gap to Leader {driver.gap_to_leader:.2f}s, "
-            f"Gap to Ahead {driver.gap_to_ahead if driver.gap_to_ahead is not None else 'N/A'}s"
+        pit_str = d.pit_status.name if isinstance(d.pit_status, PitStatus) else str(d.pit_status)
+        drivers_list.append(
+            {
+                "driver_id": d.driver_id,
+                "name": d.name,
+                "team": d.team,
+                "position": int(d.position),
+                "gap_to_leader": round(float(d.gap_to_leader), 3),
+                "gap_to_ahead": (
+                    round(float(d.gap_to_ahead), 3) if d.gap_to_ahead is not None else None
+                ),
+                "last_lap_time": (
+                    round(float(d.last_lap_time), 3) if d.last_lap_time is not None else None
+                ),
+                "tyre_compound": compound_str,
+                "tyre_age": int(d.tyre_age),
+                "fuel_load_kg": round(float(d.fuel_load), 1),
+                "pit_status": pit_str,
+                "pit_stops_made": int(d.pit_stops_made),
+                "is_retired": bool(d.is_retired),
+                "drs_active": bool(getattr(d, "drs_active", False)),
+                "distance_m": round(float(d.lap_distance_covered), 1),
+            }
         )
 
-    return state
+    track_status_str = (
+        state.track_status.name
+        if isinstance(state.track_status, TrackStatus)
+        else str(state.track_status)
+    )
+
+    return {
+        "type": "lap_update",
+        "race_id": str(race_id),
+        "current_lap": int(state.current_lap),
+        "total_laps": int(state.total_laps),
+        "track_status": track_status_str,
+        "weather": str(weather),
+        "track_temp": float(track_temp),
+        "drivers": drivers_list,
+    }
