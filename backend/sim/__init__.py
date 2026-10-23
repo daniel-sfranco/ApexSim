@@ -25,4 +25,3 @@ __all__ = [
     "format_lap_update",
     "tick",
 ]
-

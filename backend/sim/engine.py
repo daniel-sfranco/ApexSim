@@ -199,4 +199,3 @@ class RaceEngine:
             # Pausa ajustada pela velocidade configurada
             sleep_duration = max(0.01, self.base_lap_delay / self.speed_multiplier)
             await asyncio.sleep(sleep_duration)
-
