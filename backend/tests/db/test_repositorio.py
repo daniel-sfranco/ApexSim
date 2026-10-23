@@ -20,9 +20,9 @@ def semeado(session):
 
 
 GRID = [
-    InscricaoNoGrid("VER", "Red Bull Racing", 1),
-    InscricaoNoGrid("NOR", "McLaren", 2),
-    InscricaoNoGrid("LEC", "Ferrari", 3),
+    InscricaoNoGrid("VER", 1, "Red Bull Racing"),
+    InscricaoNoGrid("NOR", 2, "McLaren"),
+    InscricaoNoGrid("LEC", 3, "Ferrari"),
 ]
 
 
@@ -73,8 +73,8 @@ def test_duas_corridas_no_mesmo_circuito_nao_se_misturam(semeado):
     "mudanca, trecho",
     [
         ({"circuit_id": "zandvoort"}, "circuito desconhecido"),
-        ({"grid": [InscricaoNoGrid("XXX", "Ferrari", 1)]}, "['XXX']"),
-        ({"grid": [InscricaoNoGrid("VER", "Equipe Fantasma", 1)]}, "['Equipe Fantasma']"),
+        ({"grid": [InscricaoNoGrid("XXX", 1, "Ferrari")]}, "['XXX']"),
+        ({"grid": [InscricaoNoGrid("VER", 1, "Equipe Fantasma")]}, "['Equipe Fantasma']"),
     ],
 )
 def test_referencia_inexistente_falha_alto_sem_gravar_nada(semeado, mudanca, trecho):
@@ -85,3 +85,39 @@ def test_referencia_inexistente_falha_alto_sem_gravar_nada(semeado, mudanca, tre
 
     assert semeado.scalar(select(func.count()).select_from(Race)) == 0
     assert semeado.scalar(select(func.count()).select_from(RaceEntry)) == 0
+
+
+def test_grid_so_com_codigos_usa_a_equipe_padrao_do_piloto(semeado):
+    """O contrato D2 manda só os códigos; a equipe vem de drivers.team_id."""
+    corrida = _criar(
+        semeado,
+        grid=[InscricaoNoGrid("VER", 1), InscricaoNoGrid("HAM", 2), InscricaoNoGrid("BEA", 3)],
+    )
+
+    mapa = mapa_entradas(semeado, corrida.id)
+
+    assert semeado.get(RaceEntry, mapa["VER"]).team.name == "Red Bull Racing"
+    assert semeado.get(RaceEntry, mapa["HAM"]).team.name == "Mercedes"
+    assert (
+        semeado.get(RaceEntry, mapa["BEA"]).team.name == "Haas F1 Team"
+    )  # mais voltas que na Ferrari
+
+
+def test_equipe_informada_no_grid_vence_a_padrao(semeado):
+    corrida = _criar(semeado, grid=[InscricaoNoGrid("BEA", 1, "Ferrari")])
+
+    entrada = semeado.get(RaceEntry, mapa_entradas(semeado, corrida.id)["BEA"])
+
+    assert entrada.team.name == "Ferrari"
+
+
+def test_piloto_sem_equipe_padrao_e_recusado_sem_gravar(semeado):
+    from db.models import Driver
+
+    semeado.add(Driver(code="ZZZ", full_name="Sem Equipe"))
+    semeado.flush()
+
+    with pytest.raises(ReferenciaDesconhecida, match="ZZZ"):
+        _criar(semeado, grid=[InscricaoNoGrid("ZZZ", 1)])
+
+    assert semeado.scalar(select(func.count()).select_from(Race)) == 0

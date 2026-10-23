@@ -22,7 +22,7 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import MAPEAMENTOS_DIR, TEMPORADA_DO_SEED
+from app.config import COMPOSTOS_SEM_DADO_NO_BANCO, MAPEAMENTOS_DIR, TEMPORADA_DO_SEED
 from db.base import Base, criar_engine
 from db.models import Circuit, Driver, Team, TyreCompound
 
@@ -56,7 +56,10 @@ def carregar_referencia(
         raise ValueError(f"Nenhum piloto ou equipe de {temporada} em {pasta}. Rode `make dados`.")
 
     return Referencia(
-        compostos=[{"code": r.codigo_banco, "name_pt": r.nome_pt} for r in compostos.itertuples()],
+        compostos=[
+            *({"code": r.codigo_banco, "name_pt": r.nome_pt} for r in compostos.itertuples()),
+            *({"code": c, "name_pt": nome} for c, nome in COMPOSTOS_SEM_DADO_NO_BANCO.items()),
+        ],
         circuitos=[
             {
                 "id": r.circuit_id,
@@ -66,7 +69,10 @@ def carregar_referencia(
             }
             for r in circuitos.itertuples()
         ],
-        pilotos=[{"code": r.codigo, "full_name": r.nome_completo} for r in pilotos.itertuples()],
+        pilotos=[
+            {"code": r.codigo, "full_name": r.nome_completo, "equipe": r.equipe or None}
+            for r in pilotos.itertuples()
+        ],
         equipes=[{"name": r.equipe} for r in equipes.itertuples()],
     )
 
@@ -94,12 +100,23 @@ def _sincronizar(
 
 def popular(session: Session, referencia: Referencia) -> dict[str, dict[str, int]]:
     """Grava a referência. Não dá commit: quem chama decide (o teste desfaz)."""
-    return {
+    resumo = {
         "tyre_compounds": _sincronizar(session, TyreCompound, "code", referencia.compostos),
         "circuits": _sincronizar(session, Circuit, "id", referencia.circuitos),
         "teams": _sincronizar(session, Team, "name", referencia.equipes),
-        "drivers": _sincronizar(session, Driver, "code", referencia.pilotos),
     }
+    # Os pilotos dependem das equipes já gravadas: a equipe padrão vira o `team_id`.
+    id_da_equipe = {nome: id_ for nome, id_ in session.execute(select(Team.name, Team.id))}
+    pilotos = []
+    for p in referencia.pilotos:
+        equipe = p["equipe"]
+        if equipe is not None and equipe not in id_da_equipe:
+            raise ValueError(f"equipe {equipe!r} do piloto {p['code']} não está em equipes.csv")
+        pilotos.append(
+            {"code": p["code"], "full_name": p["full_name"], "team_id": id_da_equipe.get(equipe)}
+        )
+    resumo["drivers"] = _sincronizar(session, Driver, "code", pilotos)
+    return resumo
 
 
 def main() -> None:

@@ -35,6 +35,7 @@ Pronto. Verifique:
 | `make circuitos` | Regenera a geometria dos circuitos (D3) a partir do FastF1: precisa de rede |
 | `make kaggle` | Baixa os datasets do Kaggle para `data/raw/` (precisa de `KAGGLE_API_TOKEN` no `.env`) |
 | `make dados` | Reconcilia as fontes e gera as curvas de degradação ([`docs/dados-kaggle.md`](docs/dados-kaggle.md)) |
+| `make medir` | Mede o custo de gravar uma corrida inteira no banco (cria e apaga uma corrida de teste) |
 | `make migrate` | Aplica as migrations pendentes no banco de desenvolvimento |
 | `make migration m="..."` | Gera uma migration a partir das mudanças em `backend/db/models.py` |
 | `make psql` | Abre um `psql` no banco de desenvolvimento |

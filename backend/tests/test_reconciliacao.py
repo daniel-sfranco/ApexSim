@@ -9,6 +9,7 @@ import pytest
 
 from app.pipeline.reconciliacao import (
     ReconciliacaoInconsistente,
+    _equipe_principal,
     mapear_circuitos,
     mapear_compostos,
     mapear_equipes,
@@ -178,3 +179,30 @@ def test_equipes_por_temporada_ignoram_treino_e_listam_pilotos():
     assert tabela.loc[(2024, "Ferrari"), "n_voltas"] == 2
     assert (2024, "Equipe de Treino") not in tabela.index
     assert (2023, "AlphaTauri") in tabela.index
+
+
+def test_equipe_principal_e_a_de_mais_voltas_e_desempata_por_nome():
+    """Bearman 2024: correu pela Ferrari e pela Haas; fica com a de mais voltas."""
+    pneus = pd.DataFrame(
+        {
+            "Ano": [2024] * 9,
+            "Sessao": ["R"] * 9,
+            "Driver": ["BEA"] * 5 + ["ABC"] * 4,
+            "Team": ["Haas F1 Team"] * 3 + ["Ferrari"] * 2 + ["Equipe B"] * 2 + ["Equipe A"] * 2,
+        }
+    )
+
+    tabela = _equipe_principal(pneus).set_index("codigo")
+
+    assert tabela.loc["BEA", "equipe"] == "Haas F1 Team"
+    assert tabela.loc["ABC", "equipe"] == "Equipe A"  # empate: ordem alfabética
+
+
+def test_pilotos_trazem_a_equipe_quando_os_participantes_a_informam(historico):
+    participantes = pd.DataFrame(
+        {"Ano": [2024], "codigo": ["VER"], "fontes": ["pneus"], "equipe": ["Red Bull Racing"]}
+    )
+
+    tabela, _ = mapear_pilotos(historico, participantes)
+
+    assert tabela.loc[0, "equipe"] == "Red Bull Racing"
