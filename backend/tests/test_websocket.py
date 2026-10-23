@@ -1,17 +1,21 @@
 """Testes de integração do endpoint WebSocket (/ws/races/{race_id})."""
 
 import json
+
 import pytest
 
 try:
     from fastapi.testclient import TestClient
+
     from app.main import app
     HAS_FASTAPI = True
 except ModuleNotFoundError:
     HAS_FASTAPI = False
 
 
-@pytest.mark.skipif(not HAS_FASTAPI, reason="FastAPI / TestClient não instalado no ambiente local (use Docker/uv)")
+@pytest.mark.skipif(not HAS_FASTAPI, 
+                    reason="FastAPI / TestClient não instalado no ambiente local (use Docker/uv)"
+                    )
 def test_websocket_connection_and_initial_envelope():
     """Valida a conexão WebSocket e o recebimento do envelope inicial lap_update."""
     client = TestClient(app)
