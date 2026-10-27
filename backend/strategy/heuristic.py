@@ -120,6 +120,7 @@ class PitStrategyHeuristic:
         Returns:
             PitDecision com decisão, composto alvo e justificativa.
         """
+
         # Extração agnóstica para suportar dict ou dataclasses DriverState/RaceState
         def get_d(key: str, default: Any = None) -> Any:
             if isinstance(driver_state, dict):
@@ -200,9 +201,7 @@ class PitStrategyHeuristic:
             loss_current = sum(
                 degradation_curve(compound, tyre_age + k) for k in range(1, horizon + 1)
             )
-            loss_fresh = sum(
-                degradation_curve(target_compound, k) for k in range(1, horizon + 1)
-            )
+            loss_fresh = sum(degradation_curve(target_compound, k) for k in range(1, horizon + 1))
             accumulated_loss = loss_current - loss_fresh
 
             # Pilotos na janela aproveitam o custo reduzido sob Safety Car
@@ -240,17 +239,11 @@ class PitStrategyHeuristic:
             return PitDecision(should_pit=False, reason="STAY_OUT")
 
         horizon = min(laps_remaining, DEFAULT_HORIZON)
-        loss_current = sum(
-            degradation_curve(compound, tyre_age + k) for k in range(1, horizon + 1)
-        )
-        loss_fresh = sum(
-            degradation_curve(target_compound, k) for k in range(1, horizon + 1)
-        )
+        loss_current = sum(degradation_curve(compound, tyre_age + k) for k in range(1, horizon + 1))
+        loss_fresh = sum(degradation_curve(target_compound, k) for k in range(1, horizon + 1))
         accumulated_degradation_loss = loss_current - loss_fresh
 
-        total_pit_cost = (
-            pit_lane_loss_s + DEFAULT_PIT_STOP_DURATION + DEFAULT_WARMUP_PENALTY
-        )
+        total_pit_cost = pit_lane_loss_s + DEFAULT_PIT_STOP_DURATION + DEFAULT_WARMUP_PENALTY
         aggression_factor = 1.25 - (0.50 * aggression)
         adjusted_pit_cost = total_pit_cost * aggression_factor
 

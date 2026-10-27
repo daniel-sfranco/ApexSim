@@ -282,7 +282,7 @@ class TestGridSimulationAcceptanceCriteria:
         # 2 carros por equipe = 20 pilotos
         drivers = [
             {
-                "id": f"D{i+1}",
+                "id": f"D{i + 1}",
                 "team": grid_teams[i % len(grid_teams)],
                 "tyre_compound": "medium",
                 "tyre_age": 0,

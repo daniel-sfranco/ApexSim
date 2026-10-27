@@ -15,4 +15,3 @@ UNDERCUT_MIN_AGE: int = 10  # Idade mínima de pneu (voltas) para justificar res
 SAFETY_CAR_COST_FACTOR: float = 0.55  # Perda relativa de tempo cai para ~55% sob SC/VSC
 UNDERCUT_GAP_THRESHOLD: float = 2.5  # Gap máximo (s) para considerar o carro atrás um rival direto
 UNDERCUT_MIN_AGE: int = 10  # Idade mínima de pneu (voltas) para justificar resposta ao undercut
-
