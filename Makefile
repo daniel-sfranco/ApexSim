@@ -1,4 +1,4 @@
-.PHONY: up down logs seed circuitos plot kaggle dados migrate migration psql test lint fmt clean
+.PHONY: up down logs seed circuitos plot kaggle dados medir migrate migration psql test lint fmt clean
 
 up:
 	docker compose up --build -d
@@ -38,6 +38,11 @@ kaggle:
 dados: kaggle
 	docker compose run --rm --no-deps --user $$(id -u):$$(id -g) -e HOME=/tmp -e MPLCONFIGDIR=/tmp/mpl api python -m app.pipeline.reconciliacao
 	docker compose run --rm --no-deps --user $$(id -u):$$(id -g) -e HOME=/tmp -e MPLCONFIGDIR=/tmp/mpl api python -m app.pipeline.degradacao
+
+# Mede o custo de gravar uma corrida inteira (70 voltas x 20 pilotos) no banco.
+# Cria uma corrida de teste no banco de desenvolvimento e a apaga no fim.
+medir:
+	docker compose run --rm api python -m app.pipeline.medir_persistencia
 
 # Aplica no banco de desenvolvimento as migrations que ainda não rodaram.
 # O `make up` já faz isso sozinho; use este alvo para rodar sem subir a API.

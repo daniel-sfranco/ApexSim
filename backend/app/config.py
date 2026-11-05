@@ -133,6 +133,12 @@ COMPOSTOS_FONTE_PARA_BANCO: dict[str, str | None] = {
     "TEST_UNKNOWN": None,
 }
 
+# Compostos que o contrato da API (docs/openapi.json, enum TyreCompound) aceita e
+# que o motor pode emitir, mas que os datasets não trazem como dado utilizável. Entram
+# no banco para uma volta com esse valor não derrubar a gravação em lote por violar
+# a chave estrangeira. As curvas de degradação continuam descartando esse composto.
+COMPOSTOS_SEM_DADO_NO_BANCO = {"UNKNOWN": "Desconhecido"}
+
 # Nomes em português dos compostos (seção 1 do CLAUDE.md).
 COMPOSTOS_NOME_PT = {
     "SOFT": "Macio",

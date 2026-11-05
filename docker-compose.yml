@@ -38,6 +38,8 @@ services:
       - ./circuits:/circuits
       - ./tools:/tools
       - ./track_maps:/track_maps
+      # Contrato D2: o teste de contrato lê docs/openapi.json (somente leitura).
+      - ./docs:/docs:ro
       # Datasets brutos (fora do git), mapeamentos e curvas (versionados).
       - ./data:/data
       - fastf1_cache:/cache/fastf1

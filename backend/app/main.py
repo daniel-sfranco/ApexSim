@@ -3,7 +3,7 @@ import json
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
-from app.api import health
+from app.api import health, races
 from app.config import CIRCUITS_DIR, TRACK_EDITOR_DIR, TRACK_MAPS_DIR
 from app.websocket import races as ws_races
 
@@ -15,6 +15,7 @@ app = FastAPI(
 
 app.include_router(health.router, tags=["infra"])
 app.include_router(ws_races.router, tags=["websocket"])
+app.include_router(races.router, tags=["races"])
 
 
 @app.post("/api/track-maps/{circuit_id}")

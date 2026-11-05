@@ -104,8 +104,9 @@ def mapear_pilotos(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Liga (temporada, código) ao piloto do histórico.
 
-    `participantes` tem as colunas Ano, codigo e fontes. Devolve a tabela de
-    mapeamento e as linhas que não acharam correspondência (para o resumo).
+    `participantes` tem as colunas Ano, codigo e fontes (e, se houver, equipe).
+    Devolve a tabela de mapeamento e as linhas que não acharam correspondência
+    (para o resumo).
     """
     pilotos = historico["drivers"]
     corridas = historico["races"][["raceId", "year"]]
@@ -141,16 +142,21 @@ def mapear_pilotos(
         for cod, ref in zip(mapeados["codigo"], mapeados["driverRef"], strict=True)
     ]
     mapeados["nome_completo"] = mapeados["forename"] + " " + mapeados["surname"]
+    colunas = [
+        "temporada",
+        "codigo",
+        "driverId_historico",
+        "driverRef",
+        "nome_completo",
+        "equipe",
+        "codigo_repetido_com",
+        "fontes",
+    ]
+    if "equipe" not in mapeados:  # participantes sem a equipe (ex.: só o alexjr2001)
+        mapeados["equipe"] = ""
+    mapeados["equipe"] = mapeados["equipe"].fillna("")
     tabela = mapeados.rename(columns={"driverId": "driverId_historico", "Ano": "temporada"})[
-        [
-            "temporada",
-            "codigo",
-            "driverId_historico",
-            "driverRef",
-            "nome_completo",
-            "codigo_repetido_com",
-            "fontes",
-        ]
+        colunas
     ]
     return tabela.sort_values(["temporada", "codigo"]).reset_index(drop=True), sem_correspondencia
 
@@ -295,12 +301,32 @@ def _participantes(pneus: pd.DataFrame, alexjr: pd.DataFrame) -> pd.DataFrame:
     de_alexjr["Ano"] = 2024
     de_alexjr["fonte"] = "alexjr"
     todos = pd.concat([de_pneus, de_alexjr]).rename(columns={"Driver": "codigo"})
-    return (
+    participantes = (
         todos.groupby(["Ano", "codigo"])["fonte"]
         .agg(lambda s: ";".join(sorted(set(s))))
         .rename("fontes")
         .reset_index()
     )
+    return participantes.merge(_equipe_principal(pneus), on=["Ano", "codigo"], how="left")
+
+
+def _equipe_principal(pneus: pd.DataFrame) -> pd.DataFrame:
+    """A equipe pela qual o piloto mais completou voltas de corrida na temporada.
+
+    Um piloto que trocou de equipe no meio do ano (o Bearman correu pela Ferrari e
+    pela Haas em 2024) fica com a equipe de mais voltas: é a que a tabela
+    `drivers` usa como padrão quando o grid chega só com códigos de piloto.
+    """
+    corrida = pneus[pneus["Sessao"] == SESSAO_CORRIDA].dropna(subset=["Team"])
+    voltas = corrida.groupby(["Ano", "Driver", "Team"]).size().rename("voltas").reset_index()
+    # Em empate, a ordem alfabética da equipe decide, para a saída ser determinística.
+    voltas = voltas.sort_values(
+        ["Ano", "Driver", "voltas", "Team"], ascending=[True, True, False, True]
+    )
+    principal = voltas.drop_duplicates(["Ano", "Driver"])
+    return principal.rename(columns={"Driver": "codigo", "Team": "equipe"})[
+        ["Ano", "codigo", "equipe"]
+    ]
 
 
 def gerar(saida: Path = MAPEAMENTOS_DIR) -> dict[str, int]:
