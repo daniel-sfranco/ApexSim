@@ -188,7 +188,7 @@ class PitStrategyHeuristic:
         # -------------------------------------------------------------------
         # Prioridade 3: Safety Car / VSC
         # -------------------------------------------------------------------
-        is_sc = track_status_str in ("SAFETY_CAR", "YELLOW", "VSC") or get_r("safety_car", False)
+        is_sc = track_status_str in ("SAFETY_CAR", "VSC") or get_r("safety_car", False)
         if is_sc and is_slick and laps_remaining > 3:
             # Perda relativa de tempo cai para ~55% durante Safety Car
             sc_pit_loss = pit_lane_loss_s * SAFETY_CAR_COST_FACTOR

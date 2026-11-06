@@ -200,6 +200,28 @@ class TestReactiveLayers:
         assert dec_sc.should_pit is True
         assert dec_sc.reason == "SAFETY_CAR"
 
+    def test_bandeira_amarela_nao_dispara_pit_de_safety_car(self, heuristic):
+        """Bandeira amarela simples é incidente local: não reduz o custo do pit nem dispara SAFETY_CAR."""
+        driver = {
+            "team": "Ferrari",
+            "tyre_compound": "medium",
+            "tyre_age": 15,
+            "current_lap": 20,
+        }
+
+        # Mesmo piloto/estado que pararia sob Safety Car, mas sob bandeira amarela.
+        race_yellow = {
+            "current_lap": 20,
+            "total_laps": 50,
+            "track_status": "YELLOW",
+            "weather": "dry",
+        }
+        dec_yellow = heuristic.evaluate_driver(driver, race_yellow, 21.0, _calc_deg)
+
+        # Amarela não é tratada como Safety Car: o carro segue a regra base (fica na pista).
+        assert dec_yellow.reason != "SAFETY_CAR"
+        assert dec_yellow.should_pit is False
+
     def test_undercut_defensivo(self, heuristic):
         """Se o rival atrás parou na volta anterior e está colado, para defensivamente."""
         driver = {
