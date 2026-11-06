@@ -201,7 +201,9 @@ class TestReactiveLayers:
         assert dec_sc.reason == "SAFETY_CAR"
 
     def test_bandeira_amarela_nao_dispara_pit_de_safety_car(self, heuristic):
-        """Bandeira amarela simples é incidente local: não reduz o custo do pit nem dispara SAFETY_CAR."""
+        """
+        Bandeira amarela simples é incidente local: não reduz o custo do pit nem dispara SAFETY_CAR.
+        """
         driver = {
             "team": "Ferrari",
             "tyre_compound": "medium",
