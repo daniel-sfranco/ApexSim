@@ -8,6 +8,7 @@ from .state import (
     TrackStatus,
     TyreCompound,
     tick,
+    todos_pilotos_finalizados,
 )
 
 GRID_20_PILOTOS = [
@@ -99,7 +100,14 @@ def main():
     while race_state.current_lap < laps_alvo:
         tick(race_state, delta_time=10.0, track_length=3337)
         print(f"{race_state.elapsed_time:.1f}s " + "#" * 50)
-    race_state.is_finished = race_state.current_lap >= race_state.total_laps
+    # Na distância completa, segue até os pilotos da última volta cruzarem
+    # a linha final (os da penúltima ou mais atrás já estão classificados).
+    while race_state.current_lap >= race_state.total_laps and not todos_pilotos_finalizados(
+        race_state
+    ):
+        tick(race_state, delta_time=10.0, track_length=3337)
+        print(f"{race_state.elapsed_time:.1f}s " + "#" * 50)
+    race_state.is_finished = todos_pilotos_finalizados(race_state)
 
 
 if __name__ == "__main__":

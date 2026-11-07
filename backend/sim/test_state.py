@@ -9,6 +9,7 @@ Valida:
 3. Serialização correta para o envelope formal lap_update do Contrato D2.
 """
 
+import random
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -22,6 +23,7 @@ from sim.state import (
     TyreCompound,
     format_lap_update,
     tick,
+    todos_pilotos_finalizados,
 )
 
 # Grid fictícia com 20 pilotos (2 por equipe, 10 equipes)
@@ -204,6 +206,74 @@ def test_tick_aumenta_numero_de_voltas(race_state: RaceState):
     tick(race_state, delta_time=200.0, track_length=3337.0)
     assert race_state.current_lap == 1
     assert len(race_state.lap_history) > 0
+
+
+def test_piloto_finalizado_congelado_apos_ultima_volta(
+    race_state: RaceState, monkeypatch: pytest.MonkeyPatch
+):
+    """Piloto que cumpriu total_laps não avança mais: distância e histórico travam."""
+    monkeypatch.setattr(random, "gauss", lambda mu, sigma: 0.0)
+    race_state.total_laps = 1
+
+    # 20 m/s * 200s = 4000m -> cruza a linha e completa a volta 1 (a última).
+    tick(race_state, delta_time=200.0, track_length=3337.0)
+    assert all(d.current_lap >= 1 for d in race_state.drivers.values())
+
+    distancias = {k: d.total_distance_covered for k, d in race_state.drivers.items()}
+    historico = len(race_state.lap_history)
+
+    # Novo tick: todos já terminaram, ninguém deve se mover ou registrar volta.
+    tick(race_state, delta_time=200.0, track_length=3337.0)
+
+    for driver_id, driver in race_state.drivers.items():
+        assert driver.current_lap == 1
+        assert driver.total_distance_covered == distancias[driver_id]
+    assert len(race_state.lap_history) == historico
+
+
+def test_todos_pilotos_finalizados_somente_apos_todos_cruzarem(
+    race_state: RaceState, monkeypatch: pytest.MonkeyPatch
+):
+    """todos_pilotos_finalizados só é True quando NINGUÉM falta na última volta."""
+    monkeypatch.setattr(random, "gauss", lambda mu, sigma: 0.0)
+    race_state.total_laps = 1
+    assert todos_pilotos_finalizados(race_state) is False
+
+    # Um piloto mais lento ainda na primeira volta quando os demais terminam.
+    race_state.drivers["BEA"].base_velocity = 10.0
+    tick(race_state, delta_time=200.0, track_length=3337.0)
+
+    assert all(d.current_lap >= 1 for k, d in race_state.drivers.items() if k != "BEA")
+    assert race_state.drivers["BEA"].current_lap == 0
+    assert todos_pilotos_finalizados(race_state) is False
+
+    tick(race_state, delta_time=200.0, track_length=3337.0)
+    assert todos_pilotos_finalizados(race_state) is True
+
+
+def test_todos_pilotos_finalizados_ignora_penultima_volta(race_state: RaceState):
+    """Líder bandeirado: só a última volta bloqueia; a penúltima, não."""
+    # Todos concluíram a corrida (total_laps = 58).
+    for driver in race_state.drivers.values():
+        driver.current_lap = 58
+    race_state.current_lap = 58
+    assert todos_pilotos_finalizados(race_state) is True
+
+    # Um piloto na última volta (completou 57) ainda bloqueia a bandeirada.
+    race_state.drivers["HUL"].current_lap = 57
+    assert todos_pilotos_finalizados(race_state) is False
+
+    # Piloto na penúltima volta (completou 56) NÃO bloqueia.
+    race_state.drivers["HUL"].current_lap = 58
+    race_state.drivers["BEA"].current_lap = 56
+    assert todos_pilotos_finalizados(race_state) is True
+
+    # Líder ainda não bandeirou: mesmo sem ninguém na última volta, a
+    # corrida não terminou (ex.: todo o grid na penúltima volta).
+    for driver in race_state.drivers.values():
+        driver.current_lap = 56
+    race_state.current_lap = 56
+    assert todos_pilotos_finalizados(race_state) is False
 
 
 # ---------------------------------------------------------------------------

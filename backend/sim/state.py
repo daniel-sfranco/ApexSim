@@ -241,7 +241,20 @@ def tick(
     # em ordem fixa de iteração — necessário para que a mesma seed produza
     # sempre a mesma corrida).
     voltas_concluidas: list[tuple[DriverState, int, float]] = []
+    # `state.current_lap` só é atualizado no fim do tick (passo 2), então
+    # vale o valor do tick anterior: o líder já bandeirou?
+    lider_bandeirado = state.current_lap >= state.total_laps
     for driver in state.drivers.values():
+        if (
+            driver.is_retired
+            or driver.current_lap >= state.total_laps
+            or (lider_bandeirado and driver.current_lap < state.total_laps - 1)
+        ):
+            # Concluiu a corrida, abandonou ou estava na penúltima volta
+            # (ou mais atrás) quando o líder bandeirou: fica congelado em
+            # pista. Só quem está na última volta segue correndo até a
+            # linha final.
+            continue
         distancia_inicio_tick = driver.lap_distance_covered
         step_distance = (driver.base_velocity + rand_gauss(0, 1)) * delta_time
         driver.lap_distance_covered += step_distance
@@ -272,11 +285,18 @@ def tick(
             voltas_concluidas.append((driver, driver.current_lap, lap_time))
 
     # --- 2) Posições: P1 é quem cobriu a MAIOR distância total.
-    ordenados = sorted(
-        state.drivers.values(),
-        key=lambda d: d.total_distance_covered,
-        reverse=True,
-    )
+    # Pilotos já finalizados são congelados com a distância travada no
+    # cruzamento final; ordená-los por distância total usaria o resto
+    # aleatório do tick do cruzamento como desempate, podendo colocar
+    # quem terminou DEPOIS à frente de quem terminou ANTES. Por isso a
+    # classificação final usa o tempo do cruzamento (lap_time_sum é o
+    # instante em que a última volta foi completada).
+    def chave_de_classificacao(driver: DriverState) -> tuple[int, float]:
+        if driver.current_lap >= state.total_laps:
+            return (0, driver.lap_time_sum)
+        return (1, -driver.total_distance_covered)
+
+    ordenados = sorted(state.drivers.values(), key=chave_de_classificacao)
     for posicao, driver in enumerate(ordenados, start=1):
         driver.position = posicao
 
@@ -349,6 +369,31 @@ def tick(
         )
 
     return state
+
+
+# ---------------------------------------------------------------------------
+# CONDIÇÃO DE ENCERRAMENTO DA CORRIDA
+# ---------------------------------------------------------------------------
+
+
+def todos_pilotos_finalizados(state: RaceState) -> bool:
+    """True quando não resta ninguém na última volta após a bandeirada do líder.
+
+    Regras:
+    - Líder ainda não completou `total_laps`: a corrida não terminou.
+    - Líder bandeirou: só bloqueiam os pilotos na última volta
+      (`current_lap == total_laps - 1`), que ainda precisam cruzar a
+      linha final. Quem estava na penúltima volta (ou mais atrás) já está
+      classificado e não precisa concluir a corrida.
+    - Pilotos com `is_retired` são ignorados.
+    """
+    if state.current_lap < state.total_laps:
+        return False
+    return not any(
+        driver.current_lap == state.total_laps - 1
+        for driver in state.drivers.values()
+        if not driver.is_retired
+    )
 
 
 # ---------------------------------------------------------------------------

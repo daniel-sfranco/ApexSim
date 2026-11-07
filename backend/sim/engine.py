@@ -18,7 +18,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from .state import RaceState, format_lap_update, tick
+from .state import RaceState, format_lap_update, tick, todos_pilotos_finalizados
 
 BroadcastCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 
@@ -132,7 +132,16 @@ class RaceEngine:
     # -----------------------------------------------------------------------
 
     def step_lap(self) -> None:
-        """Avança a simulação até que a próxima volta seja concluída pelo líder."""
+        """Avança a simulação até que a próxima volta seja concluída pelo líder.
+
+        Quando o líder conclui a VOLTA FINAL, a função não retorna na hora:
+        continua avançando os ticks até que os pilotos que estavam na
+        última volta cruzem a linha final (os demais — já finalizados ou
+        ainda na penúltima volta — ficam congelados em pista) e só então
+        marca `is_finished`. Quem estava na penúltima volta ou mais atrás
+        quando o líder bandeirou é classificado onde está, sem precisar
+        concluir a corrida.
+        """
         if self.state.is_finished:
             return
 
@@ -140,14 +149,9 @@ class RaceEngine:
         target_lap = starting_lap + 1
         delta_time = 1.0  # Passos de 1 segundo de simulação
 
-        # Continua avançando até que a volta atual da corrida avance
         ticks_count = 0
         max_ticks = 1000  # Trava de segurança para evitar loops infinitos
-        while (
-            self.state.current_lap < target_lap
-            and not self.state.is_finished
-            and ticks_count < max_ticks
-        ):
+        while ticks_count < max_ticks:
             tick(
                 state=self.state,
                 delta_time=delta_time,
@@ -156,8 +160,16 @@ class RaceEngine:
             )
             ticks_count += 1
 
-        if self.state.current_lap >= self.state.total_laps:
-            self.state.is_finished = True
+            if todos_pilotos_finalizados(self.state):
+                self.state.is_finished = True
+                break
+
+            # Volta intermediária do líder concluída: retorna para o loop
+            # principal emitir o broadcast. Na volta final (target_lap >=
+            # total_laps) não quebra — segue até os pilotos da última
+            # volta cruzarem a linha.
+            if self.state.current_lap >= target_lap and target_lap < self.state.total_laps:
+                break
 
     async def _emit_broadcast(self, envelope: dict[str, Any]) -> None:
         """Emite o envelope para o callback de broadcast se configurado."""

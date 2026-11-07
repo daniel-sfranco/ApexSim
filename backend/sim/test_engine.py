@@ -18,6 +18,7 @@ import pytest
 from sim.engine import RaceEngine
 from sim.realtime_loop import run_realtime_loop
 from sim.run import montar_grid_inicial
+from sim.state import tick
 
 
 @pytest.fixture
@@ -114,6 +115,49 @@ def test_engine_step_lap(base_engine: RaceEngine):
 
     base_engine.step_lap()
     assert base_engine.state.current_lap == 2
+
+
+def test_bandeirada_espera_apenas_quem_esta_na_ultima_volta():
+    """Só os pilotos na última volta precisam cruzar; a penúltima não."""
+    state = montar_grid_inicial()
+    state.total_laps = 2
+    # HUL (15 m/s) ainda estará na última volta quando o líder bandeirar
+    # e precisa cruzar a linha; BEA (8 m/s) estará na penúltima volta e
+    # não precisa concluir a corrida.
+    state.drivers["HUL"].base_velocity = 15.0
+    state.drivers["BEA"].base_velocity = 8.0
+
+    engine = RaceEngine(
+        race_state=state,
+        track_length=2000.0,
+        seed=42,
+        base_lap_delay=0.01,
+    )
+
+    for _ in range(50):
+        engine.step_lap()
+        if state.drivers["HUL"].current_lap < state.total_laps:
+            # Enquanto falta piloto na última volta, a corrida segue em andamento.
+            assert engine.state.is_finished is False
+        if engine.state.is_finished:
+            break
+
+    assert engine.state.is_finished is True
+
+    # Quem estava na última volta completou a distância.
+    assert state.drivers["HUL"].current_lap == state.total_laps
+
+    # Quem estava na penúltima volta não precisou terminar.
+    assert state.drivers["BEA"].current_lap < state.total_laps - 1
+    assert state.drivers["BEA"].position == 20
+
+    # Congelados após a bandeirada: ninguém avança mais.
+    distancias = {k: d.total_distance_covered for k, d in state.drivers.items()}
+    voltas = {k: d.current_lap for k, d in state.drivers.items()}
+    tick(state, delta_time=5.0, track_length=2000.0, rng=engine.rng)
+    for driver_id, driver in state.drivers.items():
+        assert driver.total_distance_covered == distancias[driver_id]
+        assert driver.current_lap == voltas[driver_id]
 
 
 def test_engine_determinism_with_seed():
