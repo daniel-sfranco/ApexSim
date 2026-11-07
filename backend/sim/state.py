@@ -2,13 +2,9 @@
 Motor de Simulação de F1 — Núcleo de Estado (Fase 1)
 ======================================================
 
-Este módulo define apenas o CONTRATO de dados e comportamento do motor de
-simulação: as estruturas que carregam o estado da corrida e a assinatura
-da função que avança a simulação em um "tick" (passo de tempo/volta).
-
-Nenhuma lógica de simulação é implementada aqui. O objetivo é fechar a
-interface (quais dados existem, quais tipos têm, o que tick() recebe e
-devolve) antes de implementar as regras de física/estratégia.
+Este módulo define o CONTRATO de dados e comportamento do motor de
+simulação: as estruturas que carregam o estado da corrida, a assinatura
+da função tick() e a serialização para o envelope formal do Contrato D2.
 """
 
 import random
@@ -137,13 +133,21 @@ class DriverState:
         pit_status: Estado atual do piloto em relação ao pit lane.
         pit_stops_made: Número total de paradas já realizadas na corrida.
         is_retired: True se o piloto abandonou a corrida.
-        total_race_time: Tempo total acumulado de corrida, em segundos.
+        base_velocity: Velocidade base de volta em m/s (simulação simplificada).
+        lap_time_sum: Soma dos tempos de volta para cálculo do tempo de volta.
+        lap_distance_covered: Distância percorrida na volta atual, em metros
+            (zero ao cruzar a linha de chegada; volta ao zero a cada volta).
+        total_distance_covered: Distância total acumulada na corrida, em
+            metros (sempre cresce; usada para ordenar as posições).
+        drs_active: True quando o piloto está com asa móvel (DRS) aberta.
     """
 
     driver_id: str
     name: str
     team: str
     position: int
+    lap_distance_covered: float
+    total_distance_covered: float
     current_lap: int
     last_lap_time: float | None
     gap_to_leader: float
@@ -154,8 +158,9 @@ class DriverState:
     pit_status: PitStatus
     pit_stops_made: int
     is_retired: bool
-    total_race_time: float
-    base_lap_time: float  # Tempo base de volta, em segundos (para simulação simplificada)
+    base_velocity: float  # Velocidade base de volta em m/s (simulação simplificada)
+    lap_time_sum: float = 0.0  # Soma dos tempos de volta para cálculo do tempo de volta
+    drs_active: bool = False  # True quando o piloto está com asa móvel (DRS) aberta
 
 
 # ---------------------------------------------------------------------------
@@ -192,10 +197,9 @@ class RaceState:
     total_laps: int
     track_status: TrackStatus
     drivers: dict[str, DriverState]
+    elapsed_time: float
     lap_history: list[LapResult] = field(default_factory=list)
-    elapsed_time: float = 0.0
     is_finished: bool = False
-    rng = random.random()  # Gerador de números aleatórios para eventos estocásticos
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +207,12 @@ class RaceState:
 # ---------------------------------------------------------------------------
 
 
-def tick(state: RaceState, delta_time: float) -> RaceState:
+def tick(
+    state: RaceState,
+    delta_time: float,
+    track_length: float,
+    rng: random.Random | None = None,
+) -> RaceState:
     """Avança a simulação em um passo de tempo (ou de volta).
 
     Este é o contrato central do motor: dado um RaceState e um intervalo
@@ -216,54 +225,138 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
         delta_time: Quantidade de tempo, em segundos, que este tick deve
             avançar na simulação. Permite tanto um motor orientado a
             tempo fixo (ex.: 0.1s por tick) quanto orientado a eventos.
+        track_length: Comprimento total da pista em metros.
+        rng: Gerador aleatório determinístico (opcional). Se omitido, usa
+            o módulo `random` global.
 
     Returns:
-        RaceState: O novo estado da corrida após aplicar este tick,
-        incluindo atualizações de posição, tempos, gaps, pneus,
-        combustível e status de pit de cada piloto, além de qualquer
-        LapResult novo que tenha sido gerado neste passo.
-
+        RaceState: O novo estado da corrida após aplicar este tick.
     """
+    state.elapsed_time += delta_time
+    rand_gauss = rng.gauss if rng is not None else random.gauss
+
+    # --- 1) Avança a distância de cada piloto e detecta conclusões de volta.
+    # A distância é atualizada com base na velocidade base e em um ruído
+    # aleatório (exatamente uma chamada de gauss por piloto por tick,
+    # em ordem fixa de iteração — necessário para que a mesma seed produza
+    # sempre a mesma corrida).
+    voltas_concluidas: list[tuple[DriverState, int, float]] = []
+    # `state.current_lap` só é atualizado no fim do tick (passo 2), então
+    # vale o valor do tick anterior: o líder já bandeirou?
+    lider_bandeirado = state.current_lap >= state.total_laps
     for driver in state.drivers.values():
-        # Simulação simplificada: cada piloto completa uma volta em base_lap_time
-        driver.current_lap += 1
-        # Adiciona variação aleatória.
-        driver.last_lap_time = driver.base_lap_time + random.gauss(0, 1.0)
-        driver.total_race_time += driver.last_lap_time
-    for driver in state.drivers.values():
-        sorted_drivers = sorted(
-            state.drivers.values(),
-            key=lambda d: d.total_race_time,
+        if (
+            driver.is_retired
+            or driver.current_lap >= state.total_laps
+            or (lider_bandeirado and driver.current_lap < state.total_laps - 1)
+        ):
+            # Concluiu a corrida, abandonou ou estava na penúltima volta
+            # (ou mais atrás) quando o líder bandeirou: fica congelado em
+            # pista. Só quem está na última volta segue correndo até a
+            # linha final.
+            continue
+        distancia_inicio_tick = driver.lap_distance_covered
+        step_distance = (driver.base_velocity + rand_gauss(0, 1)) * delta_time
+        driver.lap_distance_covered += step_distance
+        driver.total_distance_covered += step_distance
+
+        cruzamentos = 0
+        while driver.lap_distance_covered >= track_length:
+            driver.lap_distance_covered -= track_length
+            cruzamentos += 1
+            # Distância (contada do início do tick) em que a linha foi
+            # cruzada; dividida por step_distance dá a fração do tick em que
+            # o cruzamento aconteceu. Assim registra-se o instante real do
+            # cruzamento em vez do fim do tick — evita quantizar tempos de
+            # volta e gaps em múltiplos de delta_time.
+            distancia_ao_cruzamento = (
+                track_length - distancia_inicio_tick + (cruzamentos - 1) * track_length
+            )
+            fracao = distancia_ao_cruzamento / step_distance
+            instante_cruzamento = state.elapsed_time - delta_time + fracao * delta_time
+            # Tempo da volta = instante deste cruzamento menos o instante do
+            # cruzamento anterior. Na primeira volta lap_time_sum é 0, então
+            # o resultado é o tempo decorrido desde a largada — correto
+            # também nesse caso.
+            lap_time = instante_cruzamento - driver.lap_time_sum
+            driver.lap_time_sum += lap_time
+            driver.last_lap_time = lap_time
+            driver.current_lap += 1
+            voltas_concluidas.append((driver, driver.current_lap, lap_time))
+
+    # --- 2) Posições: P1 é quem cobriu a MAIOR distância total.
+    # Pilotos já finalizados são congelados com a distância travada no
+    # cruzamento final; ordená-los por distância total usaria o resto
+    # aleatório do tick do cruzamento como desempate, podendo colocar
+    # quem terminou DEPOIS à frente de quem terminou ANTES. Por isso a
+    # classificação final usa o tempo do cruzamento (lap_time_sum é o
+    # instante em que a última volta foi completada).
+    def chave_de_classificacao(driver: DriverState) -> tuple[int, float]:
+        if driver.current_lap >= state.total_laps:
+            return (0, driver.lap_time_sum)
+        return (1, -driver.total_distance_covered)
+
+    ordenados = sorted(state.drivers.values(), key=chave_de_classificacao)
+    for posicao, driver in enumerate(ordenados, start=1):
+        driver.position = posicao
+
+    # --- 3) Gaps por tempo de volta.
+    # Cada piloto é comparado aos outros no MESMO número de voltas: o gap de
+    # um piloto com N voltas é a diferença entre o tempo que ELE levou para
+    # cumprir N voltas e o tempo que o outro piloto levou para cumprir as
+    # mesmas N voltas (assim, quem está uma volta atrás não fica com gap
+    # negativo). A cumulação por número de volta vem do lap_history; as
+    # voltas concluídas AINDA NÃO registradas neste tick são cobertas pela
+    # consulta direta a lap_time_sum (ver tempo_total_ate).
+    cumulado_historico: dict[str, dict[int, float]] = {}
+    for registro in state.lap_history:
+        por_volta = cumulado_historico.setdefault(registro.driver_id, {})
+        por_volta[registro.lap_number] = (
+            por_volta.get(registro.lap_number - 1, 0.0) + registro.lap_time
         )
-        driver.position = sorted_drivers.index(driver) + 1
-    for driver in state.drivers.values():
-        if driver.position == 1:
+
+    def tempo_total_ate(outro: DriverState, n_volta: int) -> float:
+        """Tempo cumulado que `outro` levou para concluir `n_volta` voltas."""
+        if n_volta >= outro.current_lap:
+            # Inclui (ou é exatamente) a volta mais recente de `outro`,
+            # cujo lap_time_sum já está atualizado neste tick.
+            return outro.lap_time_sum
+        return cumulado_historico.get(outro.driver_id, {}).get(n_volta, 0.0)
+
+    for posicao, driver in enumerate(ordenados, start=1):
+        if posicao == 1:
             driver.gap_to_leader = 0.0
             driver.gap_to_ahead = None
         else:
-            leader_time = next(d.total_race_time for d in state.drivers.values() if d.position == 1)
-            ahead_time = next(
-                d.total_race_time
-                for d in state.drivers.values()
-                if d.position == driver.position - 1
+            lider = ordenados[0]
+            a_frente = ordenados[posicao - 2]
+            # max(0.0, ...): a ordem por distância e a ordem por tempo de
+            # volta podem divergir transientemente dentro da mesma volta;
+            # o placar nunca deve exibir gap negativo.
+            driver.gap_to_leader = max(
+                0.0,
+                driver.lap_time_sum - tempo_total_ate(lider, driver.current_lap),
             )
-            driver.gap_to_leader = driver.total_race_time - leader_time
-            driver.gap_to_ahead = driver.total_race_time - ahead_time
-    state.current_lap += 1
+            driver.gap_to_ahead = max(
+                0.0,
+                driver.lap_time_sum - tempo_total_ate(a_frente, driver.current_lap),
+            )
 
-    # Registra o resultado desta volta no histórico. Isso precisa vir
-    # DEPOIS do cálculo de posição/gap acima, pois LapResult é um
-    # "retrato" da volta já concluída — todos os campos (posição, gaps)
-    # já devem estar com os valores finais deste tick.
-    # Iteramos em ordem de posição (não em ordem de dict) só para o
-    # histórico ficar legível quando inspecionado depois (P1 primeiro).
-    pilotos_em_ordem = sorted(state.drivers.values(), key=lambda d: d.position)
-    for driver in pilotos_em_ordem:
+    state.current_lap = ordenados[0].current_lap  # A volta atual da corrida é a volta do líder
+
+    # Registra no histórico APENAS as voltas concluídas neste tick. Cada
+    # LapResult é um "retrato" da volta já concluída — todos os campos
+    # (posição, gaps) já devem estar com os valores finais deste tick, por
+    # isso esta etapa vem DEPOIS dos cálculos acima. Iteramos em ordem de
+    # posição (não em ordem de dict) para o histórico ficar legível.
+    for driver, lap_number, lap_time in sorted(
+        voltas_concluidas, key=lambda item: item[0].position
+    ):
         state.lap_history.append(
             LapResult(
                 driver_id=driver.driver_id,
-                lap_number=driver.current_lap,
-                lap_time=driver.last_lap_time,
+                lap_number=lap_number,
+                lap_time=lap_time,
                 position=driver.position,
                 gap_to_leader=driver.gap_to_leader,
                 gap_to_ahead=driver.gap_to_ahead,
@@ -275,12 +368,97 @@ def tick(state: RaceState, delta_time: float) -> RaceState:
             )
         )
 
-    for driver in state.drivers.values():
-        print(
-            f"Driver {driver.driver_id}: Lap {driver.current_lap}, "
-            f"Last Lap Time {driver.last_lap_time:.2f}s, Total Time {driver.total_race_time:.2f}s, "
-            f"Position {driver.position}, Gap to Leader {driver.gap_to_leader:.2f}s, "
-            f"Gap to Ahead {driver.gap_to_ahead if driver.gap_to_ahead is not None else 'N/A'}s"
+    return state
+
+
+# ---------------------------------------------------------------------------
+# CONDIÇÃO DE ENCERRAMENTO DA CORRIDA
+# ---------------------------------------------------------------------------
+
+
+def todos_pilotos_finalizados(state: RaceState) -> bool:
+    """True quando não resta ninguém na última volta após a bandeirada do líder.
+
+    Regras:
+    - Líder ainda não completou `total_laps`: a corrida não terminou.
+    - Líder bandeirou: só bloqueiam os pilotos na última volta
+      (`current_lap == total_laps - 1`), que ainda precisam cruzar a
+      linha final. Quem estava na penúltima volta (ou mais atrás) já está
+      classificado e não precisa concluir a corrida.
+    - Pilotos com `is_retired` são ignorados.
+    """
+    if state.current_lap < state.total_laps:
+        return False
+    return not any(
+        driver.current_lap == state.total_laps - 1
+        for driver in state.drivers.values()
+        if not driver.is_retired
+    )
+
+
+# ---------------------------------------------------------------------------
+# SERIALIZAÇÃO PARA CONTRATO D2 (lap_update)
+# ---------------------------------------------------------------------------
+
+
+def format_lap_update(
+    state: RaceState,
+    race_id: str,
+    weather: str = "DRY",
+    track_temp: float = 32.0,
+) -> dict:
+    """Gera o envelope formal de telemetria `lap_update` (Contrato D2).
+
+    Retorna um dicionário JSON-serializável com os 20 pilotos ordenados
+    por posição atual (1..20), contendo todos os campos exigidos pela
+    Timing Tower do frontend e pelo schema OpenAPI oficial.
+    """
+    drivers_ordenados = sorted(state.drivers.values(), key=lambda d: d.position)
+    drivers_list = []
+    for d in drivers_ordenados:
+        compound_str = (
+            d.tyre_compound.name
+            if isinstance(d.tyre_compound, TyreCompound)
+            else str(d.tyre_compound)
+        )
+        pit_str = d.pit_status.name if isinstance(d.pit_status, PitStatus) else str(d.pit_status)
+        drivers_list.append(
+            {
+                "driver_id": d.driver_id,
+                "name": d.name,
+                "team": d.team,
+                "position": int(d.position),
+                "gap_to_leader": round(float(d.gap_to_leader), 3),
+                "gap_to_ahead": (
+                    round(float(d.gap_to_ahead), 3) if d.gap_to_ahead is not None else None
+                ),
+                "last_lap_time": (
+                    round(float(d.last_lap_time), 3) if d.last_lap_time is not None else None
+                ),
+                "tyre_compound": compound_str,
+                "tyre_age": int(d.tyre_age),
+                "fuel_load_kg": round(float(d.fuel_load), 1),
+                "pit_status": pit_str,
+                "pit_stops_made": int(d.pit_stops_made),
+                "is_retired": bool(d.is_retired),
+                "drs_active": bool(getattr(d, "drs_active", False)),
+                "distance_m": round(float(d.lap_distance_covered), 1),
+            }
         )
 
-    return state
+    track_status_str = (
+        state.track_status.name
+        if isinstance(state.track_status, TrackStatus)
+        else str(state.track_status)
+    )
+
+    return {
+        "type": "lap_update",
+        "race_id": str(race_id),
+        "current_lap": int(state.current_lap),
+        "total_laps": int(state.total_laps),
+        "track_status": track_status_str,
+        "weather": str(weather),
+        "track_temp": float(track_temp),
+        "drivers": drivers_list,
+    }

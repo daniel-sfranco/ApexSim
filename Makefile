@@ -72,6 +72,7 @@ lint:
 	docker compose run --rm api ruff format --check .
 
 fmt:
+	docker compose run --rm api ruff check --fix .
 	docker compose run --rm api ruff format .
 
 # Derruba tudo e apaga os volumes — usar para simular máquina limpa.
