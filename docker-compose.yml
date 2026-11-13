@@ -50,12 +50,13 @@ services:
   web:
     image: node:20-slim
     working_dir: /app
-    command: sh -c "npm install && (node scripts/mock-server.cjs &) && npm run dev"
+    command: sh -c "npm install && npm run dev"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
     ports:
       - "3000:3000"
-      - "8080:8080"
     volumes:
       - ./frontend:/app
       - /app/node_modules

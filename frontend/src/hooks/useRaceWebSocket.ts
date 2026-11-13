@@ -17,13 +17,13 @@ export function useRaceWebSocket(raceId?: string) {
   } = useRaceStore();
 
   const getWsUrl = useCallback(() => {
-    // Porta padrão do Mock Server é 8080; se definida variável de ambiente, utiliza-a
+    // Porta padrão da API FastAPI é 8000; se definida variável de ambiente, utiliza-a
     const defaultHost =
       typeof window !== "undefined" ? window.location.hostname : "localhost";
     const wsBase =
       (import.meta as any).env?.VITE_WS_URL ||
       (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_WS_URL) ||
-      `ws://${defaultHost}:8080`;
+      `ws://${defaultHost}:8000`;
 
     if (raceId) {
       return `${wsBase}/ws/races/${raceId}`;
