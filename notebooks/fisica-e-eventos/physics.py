@@ -1,18 +1,28 @@
 """
 apexsim/physics.py
 
-Funções puras de física de pneus e combustível para o ApexSim.
-Fundamentação matemática completa em docs/fisica.md (Seções 1 e 2).
+Funções puras de física de pneus, combustível, ar sujo e DRS para o ApexSim.
+Fundamentação matemática completa em docs/fisica.md (Seções 1, 2, 3 e 4).
 
-Convenção de sinal: tyre_grip retorna um fator de aderência normalizado
-(1.0 = grip máximo em pneu novo e temperatura ideal; decresce com idade e
-cliff). fuel_time_delta retorna segundos ADICIONAIS de tempo de volta
-devido à massa de combustível (0 = tanque vazio/mínimo).
+Convenção de sinal:
+- tyre_grip retorna um fator de aderência normalizado (1.0 = grip máximo em pneu
+  novo e temperatura ideal; decresce com idade e cliff).
+- fuel_time_delta retorna segundos ADICIONAIS de tempo de volta devido à massa
+  de combustível (0 = tanque vazio/mínimo).
+- dirty_air_time_delta retorna segundos ADICIONAIS de tempo de volta devido à
+  perda aerodinâmica na esteira turbulenta do carro à frente (>= 0).
+- drs_lap_time_gain retorna segundos GANHOS (redução no tempo de volta, >= 0)
+  pela abertura da asa móvel ao longo das zonas de ativação do circuito.
 """
+
+from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from app.models.track import TrackMap
 
 Compound = Literal["soft", "medium", "hard"]
 
@@ -149,3 +159,99 @@ def fuel_time_delta(fuel_kg: float) -> float:
     if fuel_kg < 0:
         raise ValueError("fuel_kg deve ser >= 0")
     return FUEL_SENSITIVITY_S_PER_KG * fuel_kg
+
+
+# ---------------------------------------------------------------------
+# Ar Sujo (Aerodynamic Wake / Dirty Air) - docs/fisica.md Secao 3
+# ---------------------------------------------------------------------
+
+DIRTY_AIR_MAX_PENALTY_S = 0.42
+DIRTY_AIR_MAX_DOWNFORCE_LOSS = 0.12
+DIRTY_AIR_DECAY_S = 0.65
+DIRTY_AIR_CUTOFF_S = 3.0
+
+
+def dirty_air_time_delta(gap_ahead_s: float | None) -> float:
+    """Penalidade de tempo de volta (s) causada pela esteira turbulenta do carro a frente."""
+    if gap_ahead_s is None:
+        return 0.0
+    if gap_ahead_s < 0.0:
+        raise ValueError("gap_ahead_s deve ser >= 0")
+    if gap_ahead_s > DIRTY_AIR_CUTOFF_S:
+        return 0.0
+    return DIRTY_AIR_MAX_PENALTY_S * math.exp(-gap_ahead_s / DIRTY_AIR_DECAY_S)
+
+
+def dirty_air_grip_factor(gap_ahead_s: float | None) -> float:
+    """Multiplicador de aderencia aerodinamica sob efeito de ar sujo."""
+    if gap_ahead_s is None:
+        return 1.0
+    if gap_ahead_s < 0.0:
+        raise ValueError("gap_ahead_s deve ser >= 0")
+    if gap_ahead_s > DIRTY_AIR_CUTOFF_S:
+        return 1.0
+    return 1.0 - DIRTY_AIR_MAX_DOWNFORCE_LOSS * math.exp(-gap_ahead_s / DIRTY_AIR_DECAY_S)
+
+
+# ---------------------------------------------------------------------
+# DRS (Drag Reduction System) - docs/fisica.md Secao 4
+# ---------------------------------------------------------------------
+
+DRS_GAP_THRESHOLD_S = 1.0
+DRS_GAIN_PER_METER_S = 0.00045
+
+
+def is_drs_eligible(
+    gap_ahead_s: float | None,
+    *,
+    current_lap: int = 2,
+    track_status: str = "GREEN",
+    is_wet: bool = False,
+    laps_since_restart: int = 2,
+) -> bool:
+    """Verifica se o piloto cumpre as regras esportivas da FIA para ativar o DRS."""
+    if gap_ahead_s is None:
+        return False
+    if gap_ahead_s < 0.0:
+        raise ValueError("gap_ahead_s deve ser >= 0")
+    if track_status.upper() != "GREEN" or is_wet:
+        return False
+    if current_lap < 2 or laps_since_restart < 1:
+        return False
+    return gap_ahead_s < DRS_GAP_THRESHOLD_S
+
+
+def drs_zone_time_gain(zone_length_m: float, *, eligible: bool = True) -> float:
+    """Ganho de tempo (s) ao percorrer uma unica zona de ativacao de DRS de extensao L_DRS."""
+    if zone_length_m < 0.0:
+        raise ValueError("zone_length_m deve ser >= 0")
+    if not eligible:
+        return 0.0
+    return DRS_GAIN_PER_METER_S * zone_length_m
+
+
+def drs_lap_time_gain(
+    track_map: TrackMap,
+    gap_ahead_s: float | None,
+    *,
+    current_lap: int = 2,
+    track_status: str = "GREEN",
+    is_wet: bool = False,
+    laps_since_restart: int = 2,
+) -> float:
+    """Ganho de tempo acumulado na volta (s) pelo uso de DRS nas zonas do TrackMap (Contrato D4)."""
+    if not is_drs_eligible(
+        gap_ahead_s,
+        current_lap=current_lap,
+        track_status=track_status,
+        is_wet=is_wet,
+        laps_since_restart=laps_since_restart,
+    ):
+        return 0.0
+
+    has_detection = any(z.type == "drs_detection" for z in track_map.zones)
+    if not has_detection:
+        return 0.0
+
+    total_drs_length_m = sum(z.length_m for z in track_map.zones if z.type == "drs_activation")
+    return drs_zone_time_gain(total_drs_length_m, eligible=True)

@@ -1,6 +1,17 @@
 import pytest
 
-from sim.physics import TYRE_TABLE, fuel_time_delta, tyre_grip, tyre_time_loss
+from app.models.track import TrackMap
+from sim.physics import (
+    TYRE_TABLE,
+    dirty_air_grip_factor,
+    dirty_air_time_delta,
+    drs_lap_time_gain,
+    drs_zone_time_gain,
+    fuel_time_delta,
+    is_drs_eligible,
+    tyre_grip,
+    tyre_time_loss,
+)
 
 
 class TestTyreGrip:
@@ -86,3 +97,63 @@ class TestFuelTimeDelta:
     def test_negative_fuel_raises(self):
         with pytest.raises(ValueError):
             fuel_time_delta(-5)
+
+
+class TestDirtyAir:
+    def test_clean_air_for_leader_or_large_gap(self):
+        assert dirty_air_time_delta(None) == 0.0
+        assert dirty_air_grip_factor(None) == 1.0
+        assert dirty_air_time_delta(3.5) == 0.0
+        assert dirty_air_grip_factor(3.5) == 1.0
+
+    def test_dirty_air_grows_rapidly_below_1s_and_near_zero_above_2s(self):
+        """Critério 'Pronto quando' (M3): Perto de zero acima de ~2s; cresce rápido abaixo de 1s."""
+        pen_2_2s = dirty_air_time_delta(2.2)
+        pen_0_8s = dirty_air_time_delta(0.8)
+        pen_0_3s = dirty_air_time_delta(0.3)
+
+        assert pen_2_2s < 0.02
+        assert pen_0_3s > pen_0_8s > 0.10
+        assert 0.20 <= pen_0_3s <= 0.45
+        assert dirty_air_grip_factor(0.3) < dirty_air_grip_factor(1.5) < 1.0
+
+    def test_negative_gap_raises(self):
+        with pytest.raises(ValueError):
+            dirty_air_time_delta(-0.1)
+
+
+class TestDRS:
+    def test_drs_eligibility_rules(self):
+        assert is_drs_eligible(0.7, current_lap=5, track_status="GREEN", is_wet=False) is True
+        # Gap >= 1.0s não ativa
+        assert is_drs_eligible(1.0, current_lap=5) is False
+        assert is_drs_eligible(1.4, current_lap=5) is False
+        # Líder (gap None) não ativa
+        assert is_drs_eligible(None, current_lap=5) is False
+        # Volta 1, pista molhada, SC ou volta imediata de relargada não ativam
+        assert is_drs_eligible(0.5, current_lap=1) is False
+        assert is_drs_eligible(0.5, current_lap=5, is_wet=True) is False
+        assert is_drs_eligible(0.5, current_lap=5, track_status="SC") is False
+        assert is_drs_eligible(0.5, current_lap=5, laps_since_restart=0) is False
+
+    def test_drs_consumes_track_map_zones_and_differentiates_circuits(self):
+        """Critério 'Pronto quando' (M3): DRS só ativa nas zonas corretas do circuito
+        e com gap < 1s.
+        """
+        interlagos = TrackMap.load("interlagos")
+        monza = TrackMap.load("monza")
+        monaco = TrackMap.load("monaco")
+
+        # Fora do alcance (gap >= 1s) -> ganho zero
+        assert drs_lap_time_gain(interlagos, 1.2, current_lap=10) == 0.0
+
+        # Dentro da janela (gap = 0.6s) -> Interlagos e Monza têm ganho muito superior a Mônaco
+        gain_interlagos = drs_lap_time_gain(interlagos, 0.6, current_lap=10)
+        gain_monza = drs_lap_time_gain(monza, 0.6, current_lap=10)
+        gain_monaco = drs_lap_time_gain(monaco, 0.6, current_lap=10)
+
+        assert gain_interlagos > 0.40
+        assert gain_monza > 0.40
+        assert 0.0 < gain_monaco < 0.10
+        assert gain_interlagos > gain_monaco
+        assert drs_zone_time_gain(900.0, eligible=True) == pytest.approx(0.405)
