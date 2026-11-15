@@ -70,9 +70,9 @@ Este documento centraliza todos os entregáveis e requisitos de código, arquite
   - [x] Atualização do documento `docs/fisica.md` com o modelo de eventos.
 
 ### M4 — Feature Complete (Semanas 11–13)
-- [ ] **Modelo Climático Dinâmico**:
-  - [ ] Cadeia de Markov para transições climáticas entre `seco`, `úmido` e `molhado`.
-  - [ ] Ajuste no tempo de volta, grip dos compostos e penalidades por escolha errada de pneu no molhado.
+- [x] **Modelo Climático Dinâmico**:
+  - [x] Cadeia de Markov para transições climáticas entre `seco`, `úmido` e `molhado`.
+  - [x] Ajuste no tempo de volta, grip dos compostos e penalidades por escolha errada de pneu no molhado.
 
 ### M5 — Entrega (Semanas 14–15)
 - [ ] Defesa final dos coeficientes e seção de física do relatório.

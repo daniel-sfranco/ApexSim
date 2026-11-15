@@ -45,29 +45,31 @@ RaceControlState = Literal["GREEN", "VSC", "SC"]
 # com maior incidência de SC em Mônaco (escapatórias em muro) que em Interlagos e Monza.
 BASE_INCIDENT_INTENSITY_PER_M = 2.4e-7
 
-# Fator de amplificação de risco por severidade da zona de frenagem:
-# w_braking(s) = 1 + gamma_1 (docs/fisica.md Seção 5.2, Eq. 259).
+# HIPÓTESE DE MODELAGEM (docs/fisica.md Seção 5.2, Eq. 259):
+# Fator de amplificação de risco por severidade da zona de frenagem w_braking(s) = 1 + gamma_1.
 # Como as zonas de frenagem representam apenas ~10-15% do perímetro físico do circuito,
-# multiplicadores de 6x a 18x refletem a concentração física real de colisões e
-# travadas de roda na desaceleração (~65-75% do total de incidentes da corrida).
+# os multiplicadores 6x, 11x e 18x foram escolhidos como hipótese para concentrar a maioria
+# dos incidentes (~65-75% na simulação) nas desacelerações fortes.
 BRAKING_SEVERITY_WEIGHTS: dict[str, float] = {
     "baixa": 6.0,
     "media": 11.0,
     "alta": 18.0,
 }
 
-# Multiplicador de risco climático w_weather(t) (docs/fisica.md Seção 5.1 e Notas).
+# HIPÓTESE DE MODELAGEM: multiplicador de risco climático w_weather(t) (docs/fisica.md Seção 5.1).
 WEATHER_RISK_WEIGHTS: dict[WeatherCondition, float] = {
     "seco": 1.0,
     "umido": 1.8,
     "molhado": 2.8,
 }
 
-# Coeficientes do modelo logístico de consequência (docs/fisica.md Seção 5.2, Eq. 263):
-# logit P(SC | incidente) = LOGIT_INTERCEPT + RUNOFF_LOGIT[runoff] + SEVERITY_LOGIT[severity]
-# - Em asfalto: P(SC) ~ 12-20% (carro geralmente retorna à pista sozinho -> perda de tempo ou VSC)
-# - Em brita:   P(SC) ~ 55-68% (carro preso na caixa de brita -> exige guincho / SC)
-# - Em muro:    P(SC) ~ 70-82% (barreira colada à pista, ex.: Mônaco -> SC quase certo)
+# HIPÓTESE DE MODELAGEM (docs/fisica.md Seção 5.2, Eq. 263):
+# Coeficientes heurísticos do modelo logístico de consequência:
+# logit P(SC | inc) = LOGIT_SC_INTERCEPT + RUNOFF_SC_LOGIT[runoff] + SEVERITY_SC_LOGIT[sev]
+# Os valores abaixo produzem qualitativamente:
+# - Em asfalto: P(SC) ~ 10-20% (carro geralmente retorna à pista sozinho -> perda de tempo ou VSC)
+# - Em brita:   P(SC) ~ 47-67% (carro preso na caixa de brita -> exige guincho / SC)
+# - Em muro:    P(SC) ~ 62-79% (barreira colada à pista, ex.: Mônaco -> SC predominante)
 LOGIT_SC_INTERCEPT = -1.2
 RUNOFF_SC_LOGIT: dict[str, float] = {
     "asfalto": -0.7,
@@ -80,7 +82,7 @@ SEVERITY_SC_LOGIT: dict[str, float] = {
     "alta": 0.5,
 }
 
-# Probabilidade condicional de VSC dado que o incidente NÃO gerou SC pleno, por escapatória.
+# HIPÓTESE DE MODELAGEM: probabilidade condicional de VSC dado que o incidente NÃO gerou SC pleno.
 RUNOFF_VSC_PROB_GIVEN_NO_SC: dict[str, float] = {
     "asfalto": 0.30,
     "brita": 0.65,
@@ -91,7 +93,7 @@ RUNOFF_VSC_PROB_GIVEN_NO_SC: dict[str, float] = {
 SC_DURATION_LAPS_RANGE = (2, 4)
 VSC_DURATION_LAPS_RANGE = (1, 2)
 
-# Fatores de redução de ritmo e compressão de gaps sob neutralização.
+# HIPÓTESE DE MODELAGEM: fatores de redução de ritmo e compressão de gaps sob neutralização.
 SC_LAP_TIME_MULTIPLIER = 1.40  # +40% no tempo de volta sob Safety Car
 VSC_LAP_TIME_MULTIPLIER = 1.25  # +25% no tempo de volta sob VSC
 SC_COMPRESSED_GAP_AHEAD_S = 0.50  # gap padrão (s) entre carros na fila do Safety Car
