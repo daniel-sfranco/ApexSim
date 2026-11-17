@@ -11,6 +11,7 @@ from __future__ import annotations
 from .engine import BroadcastCallback, RaceEngine
 from .run import montar_grid_inicial
 from .state import RaceState
+from .track import TrackMap
 
 
 async def run_realtime_loop(
@@ -20,8 +21,11 @@ async def run_realtime_loop(
     seed: int = 42,
     weather: str = "DRY",
     track_temp: float = 32.0,
+    delta_time: float = 0.5,
+    base_tick_delay: float | None = None,
     base_lap_delay: float = 2.0,
     broadcast_fn: BroadcastCallback | None = None,
+    track_map: TrackMap | None = None,
 ) -> RaceEngine:
     """Instancia e executa o motor de corrida em segundo plano ou até o fim."""
     if race_state is None:
@@ -34,11 +38,19 @@ async def run_realtime_loop(
         seed=seed,
         weather=weather,
         track_temp=track_temp,
+        delta_time=delta_time,
+        base_tick_delay=base_tick_delay,
         base_lap_delay=base_lap_delay,
         broadcast_fn=broadcast_fn,
+        track_map=track_map,
     )
     await engine.run()
+
+    if race_state.is_finished:
+        engine.stop()
+    
     return engine
 
 
 __all__ = ["RaceEngine", "run_realtime_loop"]
+

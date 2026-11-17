@@ -323,3 +323,114 @@ def test_format_lap_update_gera_envelope_valido(race_state: RaceState):
     ]
     for campo in campos_esperados:
         assert campo in p1, f"Campo {campo} ausente no piloto do envelope"
+
+
+# ---------------------------------------------------------------------------
+# TESTES DE FÍSICA M3: Degradação de Pneus, Carga de Combustível e DRS
+# ---------------------------------------------------------------------------
+
+
+def _make_driver(
+    driver_id: str,
+    name: str = "",
+    team: str = "Test Team",
+    position: int = 1,
+    base_velocity: float = 50.0,
+    tyre_compound: TyreCompound = TyreCompound.MEDIUM,
+    tyre_age: int = 0,
+    fuel_load: float = 110.0,
+) -> DriverState:
+    return DriverState(
+        driver_id=driver_id,
+        name=name or driver_id,
+        team=team,
+        position=position,
+        lap_distance_covered=0.0,
+        total_distance_covered=0.0,
+        current_lap=0,
+        last_lap_time=None,
+        gap_to_leader=0.0,
+        gap_to_ahead=None,
+        tyre_compound=tyre_compound,
+        tyre_age=tyre_age,
+        fuel_load=fuel_load,
+        pit_status=PitStatus.NONE,
+        pit_stops_made=0,
+        is_retired=False,
+        base_velocity=base_velocity,
+        lap_time_sum=0.0,
+        drs_active=False,
+    )
+
+
+def test_physics_tyre_degradation_reduces_speed():
+    """Comprova que pneus mais velhos resultam em menor velocidade efetiva (M3)."""
+    state = RaceState(
+        current_lap=1,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "FRESH": _make_driver(
+                "FRESH",
+                name="Fresh Tyres",
+                position=1,
+                base_velocity=50.0,
+                tyre_compound=TyreCompound.SOFT,
+                tyre_age=0,
+                fuel_load=50.0,
+            ),
+            "WORN": _make_driver(
+                "WORN",
+                name="Worn Tyres",
+                position=2,
+                base_velocity=50.0,
+                tyre_compound=TyreCompound.SOFT,
+                tyre_age=25,
+                fuel_load=50.0,
+            ),
+        },
+    )
+
+    tick(state, delta_time=1.0, track_length=4000.0, use_physics=True)
+
+    dist_fresh = state.drivers["FRESH"].lap_distance_covered
+    dist_worn = state.drivers["WORN"].lap_distance_covered
+    assert dist_fresh > dist_worn, "Piloto com pneus novos deve ser mais rápido que com pneus gastos"
+
+
+def test_physics_fuel_load_effect_and_burning():
+    """Garante que carro mais leve é mais rápido e que combustível queima continuamente."""
+    state = RaceState(
+        current_lap=1,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "HEAVY": _make_driver(
+                "HEAVY",
+                name="Heavy Car",
+                position=1,
+                base_velocity=50.0,
+                tyre_compound=TyreCompound.MEDIUM,
+                tyre_age=5,
+                fuel_load=110.0,
+            ),
+            "LIGHT": _make_driver(
+                "LIGHT",
+                name="Light Car",
+                position=2,
+                base_velocity=50.0,
+                tyre_compound=TyreCompound.MEDIUM,
+                tyre_age=5,
+                fuel_load=10.0,
+            ),
+        },
+    )
+
+    initial_heavy_fuel = state.drivers["HEAVY"].fuel_load
+    tick(state, delta_time=2.0, track_length=4000.0, use_physics=True)
+
+    assert state.drivers["LIGHT"].lap_distance_covered > state.drivers["HEAVY"].lap_distance_covered
+    assert state.drivers["HEAVY"].fuel_load < initial_heavy_fuel, "Combustível deve diminuir com a distância"
+

@@ -12,6 +12,7 @@ from .state import (
     format_lap_update,
     tick,
 )
+from .track import TrackMap, Zone
 
 __all__ = [
     "RaceEngine",
@@ -24,4 +25,7 @@ __all__ = [
     "TyreCompound",
     "format_lap_update",
     "tick",
+    "TrackMap",
+    "Zone",
 ]
+

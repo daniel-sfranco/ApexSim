@@ -19,6 +19,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sim.engine import RaceEngine
 from sim.run import montar_grid_inicial
 from sim.state import RaceState
+from sim.track import TrackMap
 
 logger = logging.getLogger("apexsim.websocket")
 
@@ -36,6 +37,7 @@ def get_or_create_engine(
     weather: str = "DRY",
     track_temp: float = 32.0,
     force_new: bool = False,
+    circuit_id: str = "interlagos",
 ) -> RaceEngine:
     """Recupera a instância ativa do RaceEngine ou inicializa uma nova para a corrida."""
     if force_new and race_id in active_engines:
@@ -45,6 +47,12 @@ def get_or_create_engine(
 
     if race_id not in active_engines or force_new:
         initial_state = state or montar_grid_inicial()
+
+        track_map = None
+        try:
+            track_map = TrackMap.load(circuit_id)
+        except Exception as e:
+            logger.warning(f"Não foi possível carregar TrackMap para '{circuit_id}': {e}")
 
         async def _broadcast(envelope: dict[str, Any]) -> None:
             clients = connected_clients.get(race_id, set()).copy()
@@ -65,6 +73,7 @@ def get_or_create_engine(
             weather=weather,
             track_temp=track_temp,
             broadcast_fn=_broadcast,
+            track_map=track_map,
         )
         active_engines[race_id] = engine
         active_tasks[race_id] = asyncio.create_task(engine.run())
@@ -99,12 +108,18 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
                     if total_laps:
                         new_state.total_laps = int(total_laps)
 
+                    circuit_id = (
+                        payload.get("circuit_id")
+                        or payload.get("circuitId")
+                        or "interlagos"
+                    )
                     engine = get_or_create_engine(
                         race_id=race_id,
                         state=new_state,
                         seed=payload.get("seed", 42),
                         weather=payload.get("weather", "DRY"),
                         force_new=True,
+                        circuit_id=circuit_id,
                     )
                     await websocket.send_text(json.dumps(engine.get_lap_update_envelope()))
                 else:

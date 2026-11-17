@@ -18,7 +18,8 @@ import pytest
 from sim.engine import RaceEngine
 from sim.realtime_loop import run_realtime_loop
 from sim.run import montar_grid_inicial
-from sim.state import tick
+from sim.state import PitStatus, TyreCompound, tick
+from sim.track import TrackMap
 
 
 @pytest.fixture
@@ -183,6 +184,56 @@ def test_engine_determinism_with_seed():
         assert d1["last_lap_time"] == d2["last_lap_time"]
 
 
+def test_step_tick_advances_distance_and_burns_fuel(base_engine: RaceEngine):
+    """Verifica se step_tick(0.5) avança distância linear e queima combustível."""
+    ver = base_engine.state.drivers["VER"]
+    initial_dist = ver.lap_distance_covered
+    initial_fuel = ver.fuel_load
+
+    base_engine.step_tick(delta_time=0.5)
+
+    assert ver.lap_distance_covered > initial_dist
+    assert ver.fuel_load < initial_fuel
+    # Em 0.5s a ~20m/s de velocidade base, o carro avança cerca de 9 a 11 metros
+    assert 8.0 < (ver.lap_distance_covered - initial_dist) < 15.0
+
+
+def test_step_tick_with_track_map():
+    """Valida step_tick com mapa semântico de Interlagos carregado."""
+    track_map = TrackMap.load("interlagos")
+    state = montar_grid_inicial()
+    engine = RaceEngine(
+        race_state=state,
+        track_map=track_map,
+        seed=42,
+    )
+    assert engine.track_length == track_map.length_m
+    engine.step_tick(delta_time=0.5)
+    env = engine.get_lap_update_envelope()
+    assert env["drivers"][0]["distance_m"] > 0
+
+
+def test_step_tick_triggers_pit_stop_heuristic():
+    """Simula piloto com pneus degradados na janela de pit e confirma acionamento de parada."""
+    state = montar_grid_inicial()
+    engine = RaceEngine(race_state=state, track_length=4000.0, seed=42)
+
+    ver = state.drivers["VER"]
+    ver.current_lap = 2
+    ver.tyre_compound = TyreCompound.SOFT
+    ver.tyre_age = 22  # Pneu soft muito gasto
+    ver.lap_distance_covered = 3600.0  # 90% da pista (janela de entrada de pit)
+
+    engine.step_tick(delta_time=0.5)
+
+    assert ver.pit_status == PitStatus.IN_PIT
+    assert ver.pit_time_remaining > 0
+    assert len(engine.pending_events) == 1
+    event = engine.pending_events[0]
+    assert event["event_type"] == "PIT_STOP"
+    assert event["involved_drivers"] == ["VER"]
+
+
 def test_engine_async_run_and_broadcast():
     """Testa o loop assíncrono emitindo envelopes via broadcast_fn até a bandeirada."""
 
@@ -190,7 +241,8 @@ def test_engine_async_run_and_broadcast():
         emitted_laps: list[int] = []
 
         async def mock_broadcast(envelope: dict[str, Any]) -> None:
-            emitted_laps.append(envelope["current_lap"])
+            if envelope.get("type") == "lap_update":
+                emitted_laps.append(envelope["current_lap"])
 
         state = montar_grid_inicial()
         state.total_laps = 3  # Corrida curta com 3 voltas
@@ -208,8 +260,9 @@ def test_engine_async_run_and_broadcast():
 
         assert engine.state.is_finished is True
         assert engine.state.current_lap == 3
-        # Volta 0 (grid), volta 1, volta 2, volta 3 (final)
-        assert emitted_laps == [0, 1, 2, 3]
+        # Confirma que todas as voltas foram emitidas e houve telemetria tick-by-tick
+        assert sorted(set(emitted_laps)) == [0, 1, 2, 3]
+        assert len(emitted_laps) > 10
 
     asyncio.run(_run_test())
 
@@ -221,7 +274,8 @@ def test_realtime_loop_helper():
         emitted = []
 
         def sync_broadcast(env: dict[str, Any]) -> None:
-            emitted.append(env["current_lap"])
+            if env.get("type") == "lap_update":
+                emitted.append(env["current_lap"])
 
         state = montar_grid_inicial()
         state.total_laps = 2
@@ -234,6 +288,7 @@ def test_realtime_loop_helper():
         )
 
         assert engine.state.is_finished is True
-        assert len(emitted) == 3  # 0, 1, 2
+        assert sorted(set(emitted)) == [0, 1, 2]
+        assert len(emitted) > 5
 
     asyncio.run(_run_test())
