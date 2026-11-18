@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from sim.physics import (
     dirty_air_time_delta,
+    drs_zone_time_gain,
     fuel_time_delta,
     is_drs_eligible,
     tyre_time_loss,
@@ -128,6 +129,7 @@ class DriverState:
     pit_time_remaining: float = 0.0  # Tempo restante parado no pit box (s)
     pit_stop_in_this_lap: bool = False  # Sinaliza pit stop na volta atual
     pit_time_in_this_lap: float | None = None  # Duração total da passagem no pit
+    overtake_cooldown_s: float = 0.0  # Impede ultrapassagens em sequência (s)
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +163,9 @@ def tick(
     track_map: TrackMap | None = None,
     track_temp: float = 35.0,
     use_physics: bool = False,
+    laps_since_restart: int = 2,
+    is_wet: bool = False,
+    pit_speed_limit_ms: float | None = None,
 ) -> RaceState:
     """Avança a simulação em um passo de tempo (tick) aplicando a física M3.
 
@@ -179,9 +184,17 @@ def tick(
         track_map: Mapa semântico de pista 1D (opcional).
         track_temp: Temperatura da pista em Celsius (default: 35°C).
         use_physics: Se True, aplica as penalidades e bônus físicos.
+        laps_since_restart: Voltas desde a última relargada de Safety Car; bloqueia
+            o DRS na primeira volta após relargada (docs/fisica.md Sec. 4.3).
+        is_wet: Pista úmida/molhada desabilita o DRS.
+        pit_speed_limit_ms: Limite de velocidade do pit lane em m/s. Quando omitido,
+            é lido da zona `pit_lane` do TrackMap (Contrato D4) ou usa 22.2 m/s.
     """
     state.elapsed_time += delta_time
     rand_gauss = rng.gauss if rng is not None else random.gauss
+
+    if pit_speed_limit_ms is None:
+        pit_speed_limit_ms = track_map.pit_speed_limit_ms() if track_map is not None else 22.2
 
     voltas_concluidas: list[tuple[DriverState, int, float]] = []
     lider_bandeirado = state.current_lap >= state.total_laps
@@ -221,15 +234,18 @@ def tick(
             # Avaliação de DRS
             drs_gain = 0.0
             if track_map is not None:
-                in_drs_zone = track_map.is_drs_active(driver.lap_distance_covered)
+                drs_zone = track_map.get_drs_activation_zone_at(driver.lap_distance_covered)
                 drs_ok = is_drs_eligible(
                     driver.gap_to_ahead,
                     current_lap=driver.current_lap,
                     track_status=state.track_status.name,
+                    is_wet=is_wet,
+                    laps_since_restart=laps_since_restart,
                 )
-                driver.drs_active = in_drs_zone and drs_ok
-                if driver.drs_active:
-                    drs_gain = 0.5  # Bônus de ritmo em zona de DRS (~10-12 km/h)
+                driver.drs_active = drs_zone is not None and drs_ok
+                if driver.drs_active and drs_zone is not None:
+                    # Ganho proporcional à extensão da zona (docs/fisica.md Sec. 4).
+                    drs_gain = drs_zone_time_gain(drs_zone.length_m)
             else:
                 driver.drs_active = False
 
@@ -245,9 +261,9 @@ def tick(
         else:
             v_eff = driver.base_velocity
 
-        # Limite de velocidade no pit lane (80 km/h = 22.2 m/s)
+        # Limite de velocidade no pit lane (vem da zona `pit_lane` do Contrato D4)
         if driver.pit_status == PitStatus.IN_PIT:
-            v_eff = min(v_eff, 22.2)
+            v_eff = min(v_eff, pit_speed_limit_ms)
 
         # 3) Deslocamento com ruído estocástico determinístico
         step_distance = max(0.0, (v_eff + rand_gauss(0, 0.4)) * tempo_movimento)
@@ -281,14 +297,19 @@ def tick(
             voltas_concluidas.append((driver, driver.current_lap, lap_time))
 
     # 5) Classificação: P1 é quem cobriu a maior distância total (ou menor tempo no encerramento)
-    def chave_de_classificacao(driver: DriverState) -> tuple[int, float]:
+    # Pilotos que abandonaram vão para o fim da tabela e não participam dos gaps.
+    def chave_de_classificacao(driver: DriverState) -> tuple[int, int, float]:
+        if driver.is_retired:
+            return (2, 0, 0.0)
         if driver.current_lap >= state.total_laps:
-            return (0, driver.lap_time_sum)
-        return (1, -driver.total_distance_covered)
+            return (0, 0, driver.lap_time_sum)
+        return (1, 0, -driver.total_distance_covered)
 
     ordenados = sorted(state.drivers.values(), key=chave_de_classificacao)
     for posicao, driver in enumerate(ordenados, start=1):
         driver.position = posicao
+
+    ativos = [driver for driver in ordenados if not driver.is_retired]
 
     # 6) Cálculo de Gaps para líder e carro à frente
     cumulado_historico: dict[str, dict[int, float]] = {}
@@ -303,13 +324,13 @@ def tick(
             return outro.lap_time_sum
         return cumulado_historico.get(outro.driver_id, {}).get(n_volta, 0.0)
 
-    for posicao, driver in enumerate(ordenados, start=1):
+    for posicao, driver in enumerate(ativos, start=1):
         if posicao == 1:
             driver.gap_to_leader = 0.0
             driver.gap_to_ahead = None
         else:
-            lider = ordenados[0]
-            a_frente = ordenados[posicao - 2]
+            lider = ativos[0]
+            a_frente = ativos[posicao - 2]
             driver.gap_to_leader = max(
                 0.0,
                 driver.lap_time_sum - tempo_total_ate(lider, driver.current_lap),
@@ -319,7 +340,8 @@ def tick(
                 driver.lap_time_sum - tempo_total_ate(a_frente, driver.current_lap),
             )
 
-    state.current_lap = ordenados[0].current_lap
+    if ativos:
+        state.current_lap = ativos[0].current_lap
 
     # 7) Registro das voltas concluídas no histórico
     for driver, lap_number, lap_time in sorted(
@@ -351,13 +373,12 @@ def tick(
 
 def todos_pilotos_finalizados(state: RaceState) -> bool:
     """True quando não resta ninguém na última volta após a bandeirada do líder."""
+    ativos = [driver for driver in state.drivers.values() if not driver.is_retired]
+    if not ativos:
+        return True
     if state.current_lap < state.total_laps:
         return False
-    return not any(
-        driver.current_lap == state.total_laps - 1
-        for driver in state.drivers.values()
-        if not driver.is_retired
-    )
+    return not any(driver.current_lap == state.total_laps - 1 for driver in ativos)
 
 
 # ---------------------------------------------------------------------------

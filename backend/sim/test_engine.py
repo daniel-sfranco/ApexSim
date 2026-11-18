@@ -16,10 +16,12 @@ from typing import Any
 import pytest
 
 from sim.engine import RaceEngine
+from sim.events import RaceIncident
 from sim.realtime_loop import run_realtime_loop
 from sim.run import montar_grid_inicial
-from sim.state import PitStatus, TyreCompound, tick
+from sim.state import PitStatus, TrackStatus, TyreCompound, tick
 from sim.track import TrackMap
+from strategy.heuristic import PitDecision
 
 
 @pytest.fixture
@@ -122,11 +124,11 @@ def test_bandeirada_espera_apenas_quem_esta_na_ultima_volta():
     """Só os pilotos na última volta precisam cruzar; a penúltima não."""
     state = montar_grid_inicial()
     state.total_laps = 2
-    # HUL (15 m/s) ainda estará na última volta quando o líder bandeirar
-    # e precisa cruzar a linha; BEA (8 m/s) estará na penúltima volta e
+    # OCO (15 m/s) ainda estará na última volta quando o líder bandeirar
+    # e precisa cruzar a linha; MAG (8 m/s) estará na penúltima volta e
     # não precisa concluir a corrida.
-    state.drivers["HUL"].base_velocity = 15.0
-    state.drivers["BEA"].base_velocity = 8.0
+    state.drivers["OCO"].base_velocity = 15.0
+    state.drivers["MAG"].base_velocity = 8.0
 
     engine = RaceEngine(
         race_state=state,
@@ -137,7 +139,7 @@ def test_bandeirada_espera_apenas_quem_esta_na_ultima_volta():
 
     for _ in range(50):
         engine.step_lap()
-        if state.drivers["HUL"].current_lap < state.total_laps:
+        if state.drivers["OCO"].current_lap < state.total_laps:
             # Enquanto falta piloto na última volta, a corrida segue em andamento.
             assert engine.state.is_finished is False
         if engine.state.is_finished:
@@ -146,11 +148,11 @@ def test_bandeirada_espera_apenas_quem_esta_na_ultima_volta():
     assert engine.state.is_finished is True
 
     # Quem estava na última volta completou a distância.
-    assert state.drivers["HUL"].current_lap == state.total_laps
+    assert state.drivers["OCO"].current_lap == state.total_laps
 
     # Quem estava na penúltima volta não precisou terminar.
-    assert state.drivers["BEA"].current_lap < state.total_laps - 1
-    assert state.drivers["BEA"].position == 20
+    assert state.drivers["MAG"].current_lap < state.total_laps - 1
+    assert state.drivers["MAG"].position == 20
 
     # Congelados após a bandeirada: ninguém avança mais.
     distancias = {k: d.total_distance_covered for k, d in state.drivers.items()}
@@ -292,3 +294,159 @@ def test_realtime_loop_helper():
         assert len(emitted) > 5
 
     asyncio.run(_run_test())
+
+
+# ---------------------------------------------------------------------------
+# Pit lane (Contrato D4), eventos estocásticos e Safety Car (M3)
+# ---------------------------------------------------------------------------
+
+
+def _incidente(
+    driver_id: str = "VER",
+    *,
+    consequence: str = "TIME_LOSS",
+    retirement: bool = False,
+    time_loss_s: float = 4.0,
+) -> RaceIncident:
+    return RaceIncident(
+        driver_id=driver_id,
+        lap_number=5,
+        distance_m=1200.0,
+        sector=1,
+        is_braking_zone=True,
+        severity="alta",
+        runoff="brita",
+        corner_name="S do Senna",
+        consequence=consequence,  # type: ignore[arg-type]
+        time_loss_s=time_loss_s,
+        caused_retirement=retirement,
+    )
+
+
+def test_pit_lane_values_come_from_track_map():
+    """O motor lê limite e perda de tempo do pit lane do Contrato D4."""
+    mapa = TrackMap.load("interlagos")
+    engine = RaceEngine(
+        race_state=montar_grid_inicial(),
+        seed=42,
+        base_lap_delay=0.01,
+        track_map=mapa,
+    )
+
+    assert engine.pit_lane_loss_s == pytest.approx(21.0)
+    assert engine.pit_speed_limit_ms == pytest.approx(80.0 / 3.6)
+
+
+def test_pit_stop_applies_track_map_time_loss(monkeypatch):
+    """A parada usa `time_loss_s` da pista, não o valor fixo antigo."""
+
+    def fake_evaluate(**_kwargs: Any) -> PitDecision:
+        return PitDecision(should_pit=True, target_compound="hard", reason="TESTE")
+
+    mapa = TrackMap.load("interlagos")
+    state = montar_grid_inicial()
+    engine = RaceEngine(
+        race_state=state,
+        seed=42,
+        base_lap_delay=0.01,
+        track_map=mapa,
+    )
+    monkeypatch.setattr(engine.pit_heuristic, "evaluate_driver", fake_evaluate)
+
+    ver = state.drivers["VER"]
+    ver.current_lap = 5
+    ver.lap_distance_covered = 4000.0
+
+    engine.step_tick(delta_time=0.5)
+
+    assert ver.pit_stops_made == 1
+    assert ver.pit_time_in_this_lap == pytest.approx(21.0)
+    # O tick consumiu 0.5 s do tempo parado no box.
+    assert ver.pit_time_remaining == pytest.approx(20.5)
+    assert engine.pending_events[0]["event_type"] == "PIT_STOP"
+
+
+def test_apply_incident_adds_time_loss_and_event():
+    engine = RaceEngine(race_state=montar_grid_inicial(), seed=42, base_lap_delay=0.01)
+    ver = engine.state.drivers["VER"]
+    antes = ver.lap_time_sum
+
+    engine._apply_incident(_incidente())
+
+    assert ver.lap_time_sum == pytest.approx(antes + 4.0)
+    assert ver.is_retired is False
+    evento = engine.pending_events[-1]
+    assert evento["event_type"] == "ACCIDENT"
+    assert evento["involved_drivers"] == ["VER"]
+    assert evento["zone_id"] is not None
+
+
+def test_apply_incident_retires_driver():
+    engine = RaceEngine(race_state=montar_grid_inicial(), seed=42, base_lap_delay=0.01)
+    ver = engine.state.drivers["VER"]
+
+    engine._apply_incident(_incidente(retirement=True))
+
+    assert ver.is_retired is True
+    tipos = [e["event_type"] for e in engine.pending_events]
+    assert "RETIREMENT" in tipos
+    assert "ACCIDENT" in tipos
+
+
+def test_safety_car_deployment_updates_status_and_compresses_field():
+    state = montar_grid_inicial()
+    state.total_laps = 50
+    engine = RaceEngine(
+        race_state=state,
+        seed=42,
+        track_length=4309.0,
+        base_lap_delay=0.01,
+    )
+
+    ordenados = sorted(state.drivers.values(), key=lambda d: d.position)
+    for idx, driver in enumerate(ordenados):
+        driver.current_lap = 10
+        driver.lap_distance_covered = 1000.0
+        driver.total_distance_covered = 10 * 4309 + 1000.0 - idx * 30.0
+        driver.lap_time_sum = 1000.0 + idx * 0.8
+
+    engine.race_control.state = "SC"
+    engine.race_control.laps_remaining = 3
+    engine._sync_track_status("GREEN", [])
+
+    assert state.track_status == TrackStatus.SAFETY_CAR
+    assert engine.pending_events[-1]["event_type"] == "SAFETY_CAR_DEPLOYED"
+
+    ativos = sorted(state.drivers.values(), key=lambda d: d.position)
+    for idx in range(1, 5):
+        assert ativos[idx].lap_time_sum - ativos[idx - 1].lap_time_sum == pytest.approx(0.5)
+
+
+def test_step_tick_samples_incidents_on_lap_crossing(monkeypatch):
+    """Um cruzamento de linha dispara a amostragem de incidentes do piloto."""
+    mapa = TrackMap.load("interlagos")
+    state = montar_grid_inicial(grid=["VER", "NOR"])
+    engine = RaceEngine(
+        race_state=state,
+        seed=42,
+        base_lap_delay=0.01,
+        track_map=mapa,
+    )
+
+    chamados: list[tuple[str, int]] = []
+
+    def fake_incident(driver_id, lap_number, track_map, rng, **kwargs):  # noqa: ANN001
+        chamados.append((driver_id, lap_number))
+        return None
+
+    monkeypatch.setattr("sim.engine.sample_driver_lap_incident", fake_incident)
+
+    for driver in state.drivers.values():
+        driver.current_lap = 3
+        driver.lap_distance_covered = 4300.0
+    engine._previous_race_lap = 3
+
+    engine.step_tick(delta_time=0.5)
+
+    assert chamados
+    assert all(lap == 4 for _, lap in chamados)

@@ -19,10 +19,13 @@ import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from sim.physics import tyre_time_loss
+from sim.events import RaceIncident, SafetyCarStateMachine, sample_driver_lap_incident
+from sim.overtaking import compound_name, sample_overtake
+from sim.physics import tyre_grip, tyre_time_loss
 from sim.state import (
     PitStatus,
     RaceState,
+    TrackStatus,
     TyreCompound,
     format_lap_update,
     tick,
@@ -32,6 +35,24 @@ from sim.track import TrackMap
 from strategy.heuristic import PitStrategyHeuristic
 
 BroadcastCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+
+# Mapeia o clima do contrato D2 ("DRY"/"DAMP"/"WET") para o vocabulário do
+# gerador de incidentes (sim.events).
+WEATHER_TO_INCIDENT_CONDITION: dict[str, str] = {
+    "DRY": "seco",
+    "SECO": "seco",
+    "DAMP": "umido",
+    "UMIDO": "umido",
+    "WET": "molhado",
+    "MOLHADO": "molhado",
+}
+
+# Mapeia a máquina de estados de direção de prova para o enum do Contrato D2.
+RACE_CONTROL_TO_TRACK_STATUS: dict[str, TrackStatus] = {
+    "GREEN": TrackStatus.GREEN,
+    "VSC": TrackStatus.YELLOW,
+    "SC": TrackStatus.SAFETY_CAR,
+}
 
 
 class RaceEngine:
@@ -96,6 +117,19 @@ class RaceEngine:
 
         self.pending_events: list[dict[str, Any]] = []
         self.pit_heuristic = PitStrategyHeuristic()
+
+        # Valores de pit lane vindos do Contrato D4 (com fallback seguro).
+        if self.track_map is not None:
+            self.pit_lane_loss_s = self.track_map.pit_time_loss_s()
+            self.pit_speed_limit_ms = self.track_map.pit_speed_limit_ms()
+        else:
+            self.pit_lane_loss_s = 22.0
+            self.pit_speed_limit_ms = 22.2
+
+        # Direção de prova (Safety Car / VSC) e controle de voltas.
+        self.race_control = SafetyCarStateMachine()
+        self._previous_race_lap = race_state.current_lap
+        self._lap_incidents: list[RaceIncident] = []
 
     # -----------------------------------------------------------------------
     # CONTROLES DE FLUXO EM TEMPO REAL
@@ -162,7 +196,88 @@ class RaceEngine:
 
         dt = float(delta_time if delta_time is not None else self.delta_time)
 
-        # Avaliação de pit stops via heurística de estratégia antes do movimento
+        self._advance_cooldowns(dt)
+        self._evaluate_pit_stops()
+        self._resolve_overtakes()
+
+        laps_before = {d.driver_id: d.current_lap for d in self.state.drivers.values()}
+
+        # Avança a física e deslocamento em 1 tick
+        tick(
+            state=self.state,
+            delta_time=dt,
+            track_length=self.track_length,
+            rng=self.rng,
+            track_map=self.track_map,
+            track_temp=self.track_temp,
+            use_physics=True,
+            laps_since_restart=self.race_control.laps_since_restart,
+            is_wet=not self.is_dry,
+            pit_speed_limit_ms=self.pit_speed_limit_ms,
+        )
+
+        # Eventos estocásticos e direção de prova (M3)
+        incidents = self._sample_lap_incidents(laps_before)
+        for incident in incidents:
+            self._apply_incident(incident)
+            self._lap_incidents.append(incident)
+
+        if self.state.current_lap > self._previous_race_lap:
+            self._on_new_race_lap(self._lap_incidents)
+            self._lap_incidents = []
+            self._previous_race_lap = self.state.current_lap
+
+        if todos_pilotos_finalizados(self.state):
+            self.state.is_finished = True
+
+    # -----------------------------------------------------------------------
+    # ESTRATÉGIA, ULTRAPASSAGEM E DIREÇÃO DE PROVA
+    # -----------------------------------------------------------------------
+
+    @property
+    def is_dry(self) -> bool:
+        """True quando a pista está seca (habilita DRS e reduz risco)."""
+        return str(self.weather).strip().upper() in ("DRY", "SECO")
+
+    @property
+    def incident_weather(self) -> str:
+        """Clima no vocabulário do gerador de incidentes (`sim.events`)."""
+        return WEATHER_TO_INCIDENT_CONDITION.get(str(self.weather).strip().upper(), "seco")
+
+    def _aggression_for(self, team: str) -> float:
+        """Agressividade da equipe configurada na heurística de estratégia."""
+        return self.pit_heuristic.team_aggression.get(team, 0.5)
+
+    def _queue_event(
+        self,
+        event_type: str,
+        involved_drivers: list[str],
+        description: str,
+        *,
+        zone_id: str | None = None,
+        lap: int | None = None,
+    ) -> None:
+        """Enfileira um envelope `event_update` (Contrato D2)."""
+        self.pending_events.append(
+            {
+                "type": "event_update",
+                "race_id": self.race_id,
+                "lap": int(lap if lap is not None else self.state.current_lap),
+                "event_type": event_type,
+                "involved_drivers": list(involved_drivers),
+                "zone_id": zone_id,
+                "description": description,
+            }
+        )
+
+    def _advance_cooldowns(self, delta_time: float) -> None:
+        """Decrementa o cooldown de ultrapassagem de cada piloto."""
+        for driver in self.state.drivers.values():
+            if driver.overtake_cooldown_s > 0.0:
+                driver.overtake_cooldown_s = max(0.0, driver.overtake_cooldown_s - delta_time)
+
+    def _evaluate_pit_stops(self) -> None:
+        """Avalia a heurística de pit stop e aplica a parada (perda do Contrato D4)."""
         for driver in self.state.drivers.values():
             if driver.is_retired or driver.pit_status != PitStatus.NONE:
                 continue
@@ -178,52 +293,202 @@ class RaceEngine:
                 decision = self.pit_heuristic.evaluate_driver(
                     driver_state=driver,
                     race_state=self.state,
-                    pit_lane_loss_s=22.0,
+                    pit_lane_loss_s=self.pit_lane_loss_s,
                     degradation_curve=lambda c, a: tyre_time_loss(c, a, self.track_temp),
                 )
-                if decision.should_pit:
-                    target_name = (decision.target_compound or "medium").upper()
-                    try:
-                        novo_composto = TyreCompound[target_name]
-                    except KeyError:
-                        novo_composto = TyreCompound.MEDIUM
+                if not decision.should_pit:
+                    continue
 
-                    driver.pit_status = PitStatus.IN_PIT
-                    driver.pit_time_remaining = 22.0
-                    driver.pit_stops_made += 1
-                    driver.pit_stop_in_this_lap = True
-                    driver.pit_time_in_this_lap = 22.0
-                    driver.tyre_compound = novo_composto
-                    driver.tyre_age = 0
+                target_name = (decision.target_compound or "medium").upper()
+                try:
+                    novo_composto = TyreCompound[target_name]
+                except KeyError:
+                    novo_composto = TyreCompound.MEDIUM
 
-                    self.pending_events.append(
-                        {
-                            "type": "event_update",
-                            "race_id": self.race_id,
-                            "lap": driver.current_lap,
-                            "event_type": "PIT_STOP",
-                            "involved_drivers": [driver.driver_id],
-                            "zone_id": "pit_lane",
-                            "description": (
-                                f"{driver.name} ({driver.team}) realizou pit stop "
-                                f"e colocou pneus {target_name} ({decision.reason})."
-                            ),
-                        }
-                    )
+                driver.pit_status = PitStatus.IN_PIT
+                driver.pit_time_remaining = self.pit_lane_loss_s
+                driver.pit_stops_made += 1
+                driver.pit_stop_in_this_lap = True
+                driver.pit_time_in_this_lap = self.pit_lane_loss_s
+                driver.tyre_compound = novo_composto
+                driver.tyre_age = 0
 
-        # Avança a física e deslocamento em 1 tick
-        tick(
-            state=self.state,
-            delta_time=dt,
-            track_length=self.track_length,
-            rng=self.rng,
-            track_map=self.track_map,
+                self._queue_event(
+                    "PIT_STOP",
+                    [driver.driver_id],
+                    (
+                        f"{driver.name} ({driver.team}) realizou pit stop "
+                        f"e colocou pneus {target_name} ({decision.reason})."
+                    ),
+                    zone_id="pit_lane",
+                )
+
+    def _resolve_overtakes(self) -> None:
+        """Sorteia ultrapassagens do tick e emite os eventos correspondentes."""
+        if self.track_map is None:
+            return
+
+        resultados = sample_overtake(
+            self.state,
+            self.track_map,
+            self.rng,
             track_temp=self.track_temp,
-            use_physics=True,
+        )
+        for resultado in resultados:
+            atacante = self.state.drivers.get(resultado.attacker_id)
+            defensor = self.state.drivers.get(resultado.defender_id)
+            nome_atacante = atacante.name if atacante else resultado.attacker_id
+            nome_defensor = defensor.name if defensor else resultado.defender_id
+            self._queue_event(
+                "OVERTAKE",
+                [resultado.attacker_id, resultado.defender_id],
+                (
+                    f"{nome_atacante} ultrapassou {nome_defensor} em "
+                    f"{resultado.zone_id} (gap {resultado.gap_s:.3f}s, "
+                    f"delta de ritmo {resultado.pace_delta_s:+.3f}s/volta)."
+                ),
+                zone_id=resultado.zone_id,
+            )
+
+    def _sample_lap_incidents(self, laps_before: dict[str, int]) -> list[RaceIncident]:
+        """Amostra incidentes para cada piloto que cruzou a linha neste tick."""
+        if self.track_map is None:
+            return []
+
+        incidents: list[RaceIncident] = []
+        for driver in self.state.drivers.values():
+            if driver.is_retired:
+                continue
+            anterior = laps_before.get(driver.driver_id, driver.current_lap)
+            if driver.current_lap <= anterior:
+                continue
+
+            grip = tyre_grip(
+                compound_name(driver),  # type: ignore[arg-type]
+                driver.tyre_age,
+                self.track_temp,
+            )
+            incident = sample_driver_lap_incident(
+                driver.driver_id,
+                driver.current_lap,
+                self.track_map,
+                self.rng,
+                grip_factor=max(0.3, min(1.0, grip)),
+                weather=self.incident_weather,  # type: ignore[arg-type]
+                aggression=self._aggression_for(driver.team),
+            )
+            if incident is not None:
+                incidents.append(incident)
+        return incidents
+
+    def _apply_incident(self, incident: RaceIncident) -> None:
+        """Aplica consequência mecânica do incidente e enfileira `event_update`."""
+        driver = self.state.drivers.get(incident.driver_id)
+        if driver is None:
+            return
+
+        # Perda de tempo local (travada/escapada) empurra o relógio do piloto.
+        driver.lap_time_sum += incident.time_loss_s
+
+        local = incident.corner_name or f"setor {incident.sector}"
+        if incident.consequence == "SC":
+            consequencia = "Safety Car acionado"
+        elif incident.consequence == "VSC":
+            consequencia = "Virtual Safety Car acionado"
+        else:
+            consequencia = f"perda de {incident.time_loss_s:.1f}s"
+
+        zone_id = f"track:{int(incident.distance_m)}m"
+
+        if incident.caused_retirement:
+            driver.is_retired = True
+            driver.pit_status = PitStatus.NONE
+            driver.pit_time_remaining = 0.0
+            self._queue_event(
+                "RETIREMENT",
+                [driver.driver_id],
+                (
+                    f"{driver.name} ({driver.team}) abandonou após incidente em {local} "
+                    f"(escapatória de {incident.runoff})."
+                ),
+                zone_id=zone_id,
+                lap=incident.lap_number,
+            )
+
+        self._queue_event(
+            "ACCIDENT",
+            [driver.driver_id],
+            (
+                f"{driver.name} ({driver.team}) teve incidente em {local} "
+                f"(severidade {incident.severity or 'desconhecida'}, "
+                f"escapatória de {incident.runoff}): {consequencia}."
+            ),
+            zone_id=zone_id,
+            lap=incident.lap_number,
         )
 
-        if todos_pilotos_finalizados(self.state):
-            self.state.is_finished = True
+    def _on_new_race_lap(self, incidents: list[RaceIncident]) -> None:
+        """Avança a direção de prova ao fim de uma volta da corrida."""
+        anterior = self.race_control.state
+        self.race_control.advance_lap()
+        if incidents:
+            self.race_control.trigger_from_incidents(incidents, self.rng)
+        self._sync_track_status(anterior, incidents)
+
+    def _sync_track_status(self, previous: str, incidents: list[RaceIncident]) -> None:
+        """Espelha o estado da direção de prova no `track_status` do Contrato D2."""
+        atual = self.race_control.state
+        self.state.track_status = RACE_CONTROL_TO_TRACK_STATUS[atual]
+
+        if atual == previous:
+            return
+
+        envolvidos = [i.driver_id for i in incidents]
+        if self.state.track_status == TrackStatus.SAFETY_CAR:
+            self._compress_field()
+            self._queue_event(
+                "SAFETY_CAR_DEPLOYED",
+                envolvidos,
+                ("Safety Car acionado. Pelotão comprimido e DRS desabilitado até a relargada."),
+            )
+        elif self.state.track_status == TrackStatus.YELLOW:
+            self._queue_event(
+                "VSC_DEPLOYED",
+                envolvidos,
+                "Virtual Safety Car acionado. Ritmo reduzido em toda a pista.",
+            )
+        elif self.state.track_status == TrackStatus.GREEN:
+            self._queue_event(
+                "GREEN_FLAG",
+                [],
+                "Pista liberada. Corrida retomada em ritmo normal.",
+            )
+
+    def _compress_field(self) -> None:
+        """Comprime o pelotão na fila do Safety Car (Contrato D4 / `sim.events`)."""
+        ativos = sorted(
+            (d for d in self.state.drivers.values() if not d.is_retired),
+            key=lambda d: d.position,
+        )
+        if len(ativos) < 2 or self.track_length <= 0.0:
+            return
+
+        lider = ativos[0]
+        gaps = SafetyCarStateMachine.compress_gaps([d.position for d in ativos])
+        v_ref = self.track_length / max(1.0, lider.base_velocity)
+
+        for (gap_lider, _gap_ahead), driver in zip(gaps[1:], ativos[1:], strict=True):
+            if driver.current_lap != lider.current_lap:
+                continue
+
+            driver.lap_time_sum = lider.lap_time_sum + gap_lider
+
+            janela_m = gap_lider * v_ref
+            driver.total_distance_covered = lider.total_distance_covered - janela_m
+            distancia = lider.lap_distance_covered - janela_m
+            while distancia < 0.0:
+                distancia += self.track_length
+            driver.lap_distance_covered = distancia
 
     def step_lap(self) -> None:
         """Avança ticks até que a próxima volta seja concluída pelo líder (lote)."""

@@ -307,6 +307,41 @@ stateDiagram-v2
     ENDING --> GREEN : Relargada lancada
 ```
 
+### 4.5 Modelo de Ultrapassagem (M3)
+
+Implementado em `backend/sim/overtaking.py` como domínio puro (RNG injetado, sem I/O).
+A ultrapassagem só é sorteada quando **todas** as condições valem:
+
+- `track_status == GREEN` e volta `>= 2`;
+- atacante e defensor na mesma volta, fora do pit lane e ativos;
+- `gap_to_ahead <= 0.8 s`;
+- o atacante está dentro de uma zona de ultrapassagem do Contrato D4, resolvida na
+  ordem `overtaking_spot` → `drs_activation` (fallback para circuitos sem spot,
+  como Interlagos);
+- o cooldown do piloto expirou (uma tentativa por travessia de zona).
+
+A probabilidade de sucesso em uma tentativa é:
+
+```
+P = p0 * w_zona * w_ritmo * w_DRS * w_gap
+
+p0       = 0.01
+w_zona   = dificuldade da zona: baixa 1.8 | media 1.0 | alta 0.5
+w_ritmo  = clamp(exp(1.2 * delta), 0.05, 5.0)
+w_DRS    = 1.4 se DRS ativo, 1.0 caso contrário
+w_gap    = clamp(1.5 - 0.9 * gap_s, 0.5, 1.5)
+```
+
+`delta` é o tempo de volta do defensor menos o do atacante (s/volta), estimado pelo
+mesmo proxy de física do `tick()` (base + pneu + combustível). Zonas sem `difficulty`
+ficam em `media` (comportamento neutro).
+
+Na confirmação, o par troca posição física (`total_distance_covered` /
+`lap_distance_covered`) **e** o relógio acumulado (`lap_time_sum`), porque os gaps do
+motor são derivados do relógio. O evento `OVERTAKE` é emitido no Contrato D2 com
+`zone_id`, gap e delta de ritmo. As constantes são módulo-level para permitir a
+calibração prevista no M4.
+
 ---
 
 ## 5. Marcos e Critérios de Aceite
@@ -315,6 +350,6 @@ stateDiagram-v2
 |---|---|---|---|
 | **M1** | Sem. 3–5 | Cada trilha tem testes unitários passando isoladamente (Física, Banco, Geometria D3, Pistas D4 e Frontend). | **Concluído (100%)** |
 | **M2** | Sem. 6 | FastAPI instancia `RaceEngine`, emite `lap_update` e a Timing Tower renderiza ao vivo. Ver [integracao-m2.md](integracao-m2.md). | Em andamento |
-| **M3** | Sem. 7–10 | `tick()` chama física do Isaac. Eventos usam `TrackMap` do Daniel. | Planejado |
+| **M3** | Sem. 7–10 | `tick()` chama física do Isaac. Eventos usam `TrackMap` do Daniel. | Em andamento (motor concluído) |
 | **M4** | Sem. 11–13 | Minimapa com `distance_m`. Stint Chart e Lap Chart do banco. Monte Carlo ativo. | Planejado |
 | **M5** | Sem. 14–15 | Demo com seed fixa. Relatório consolidado. | Planejado |

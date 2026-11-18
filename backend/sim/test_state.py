@@ -276,6 +276,36 @@ def test_todos_pilotos_finalizados_ignora_penultima_volta(race_state: RaceState)
     assert todos_pilotos_finalizados(race_state) is False
 
 
+def test_todos_pilotos_finalizados_quando_grid_abandona(race_state: RaceState):
+    """Sem nenhum piloto ativo a corrida termina (nada mais pode avançar)."""
+    for driver in race_state.drivers.values():
+        driver.is_retired = True
+    assert todos_pilotos_finalizados(race_state) is True
+
+
+def test_piloto_aposentado_vai_para_o_fim_sem_afetar_gaps(race_state: RaceState):
+    """Abandonos saem da classificação e não entram nos gaps dos ativos."""
+    # Cada carro percorre uma distância decrescente na ordem de grid.
+    for idx, driver in enumerate(race_state.drivers.values()):
+        driver.total_distance_covered = 10_000.0 - idx * 100.0
+        driver.current_lap = 2
+        driver.lap_time_sum = 200.0 + idx * 1.0
+    race_state.current_lap = 2
+
+    tick(race_state, delta_time=0.0, track_length=3337.0)
+
+    assert race_state.drivers["VER"].position == 1
+    assert race_state.drivers["PER"].gap_to_ahead == pytest.approx(1.0)
+
+    # PER abandona: vai para o fim da tabela e deixa de "existir" para os gaps.
+    race_state.drivers["PER"].is_retired = True
+    tick(race_state, delta_time=0.0, track_length=3337.0)
+
+    assert race_state.drivers["PER"].position == 20
+    assert race_state.drivers["HAM"].position == 2
+    assert race_state.drivers["HAM"].gap_to_ahead == pytest.approx(2.0)
+
+
 # ---------------------------------------------------------------------------
 # TESTE DE SERIALIZAÇÃO: Contrato D2 (lap_update)
 # ---------------------------------------------------------------------------
