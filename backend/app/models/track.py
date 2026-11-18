@@ -10,7 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.config import TRACK_MAPS_DIR
-from sim.track import TrackMap as CoreTrackMap, Zone as CoreZone
+from sim.track import TrackMap as CoreTrackMap
+from sim.track import Zone as CoreZone
 
 Zone = CoreZone
 

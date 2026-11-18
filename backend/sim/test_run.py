@@ -205,6 +205,4 @@ def test_montar_grid_inicial_sem_argumentos_mantem_grid_padrao():
     estado = montar_grid_inicial()
 
     assert len(estado.drivers) == 20
-    assert all(
-        d.tyre_compound is TyreCompound.MEDIUM for d in estado.drivers.values()
-    )
+    assert all(d.tyre_compound is TyreCompound.MEDIUM for d in estado.drivers.values())

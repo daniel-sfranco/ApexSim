@@ -155,9 +155,7 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
                         new_state.total_laps = int(total_laps)
 
                     circuit_id = (
-                        payload.get("circuit_id")
-                        or payload.get("circuitId")
-                        or "interlagos"
+                        payload.get("circuit_id") or payload.get("circuitId") or "interlagos"
                     )
                     engine = get_or_create_engine(
                         race_id=race_id,

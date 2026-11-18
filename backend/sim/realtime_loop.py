@@ -48,9 +48,8 @@ async def run_realtime_loop(
 
     if race_state.is_finished:
         engine.stop()
-    
+
     return engine
 
 
 __all__ = ["RaceEngine", "run_realtime_loop"]
-

@@ -396,7 +396,9 @@ def test_physics_tyre_degradation_reduces_speed():
 
     dist_fresh = state.drivers["FRESH"].lap_distance_covered
     dist_worn = state.drivers["WORN"].lap_distance_covered
-    assert dist_fresh > dist_worn, "Piloto com pneus novos deve ser mais rápido que com pneus gastos"
+    assert dist_fresh > dist_worn, (
+        "Piloto com pneus novos deve ser mais rápido que com pneus gastos"
+    )
 
 
 def test_physics_fuel_load_effect_and_burning():
@@ -432,5 +434,6 @@ def test_physics_fuel_load_effect_and_burning():
     tick(state, delta_time=2.0, track_length=4000.0, use_physics=True)
 
     assert state.drivers["LIGHT"].lap_distance_covered > state.drivers["HEAVY"].lap_distance_covered
-    assert state.drivers["HEAVY"].fuel_load < initial_heavy_fuel, "Combustível deve diminuir com a distância"
-
+    assert state.drivers["HEAVY"].fuel_load < initial_heavy_fuel, (
+        "Combustível deve diminuir com a distância"
+    )

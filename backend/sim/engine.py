@@ -23,7 +23,6 @@ from sim.physics import tyre_time_loss
 from sim.state import (
     PitStatus,
     RaceState,
-    TrackStatus,
     TyreCompound,
     format_lap_update,
     tick,

@@ -270,11 +270,7 @@ def tick(
             distancia_ao_cruzamento = (
                 track_length - distancia_inicio_tick + (cruzamentos - 1) * track_length
             )
-            fracao = (
-                distancia_ao_cruzamento / step_distance
-                if step_distance > 0
-                else 1.0
-            )
+            fracao = distancia_ao_cruzamento / step_distance if step_distance > 0 else 1.0
             instante_cruzamento = state.elapsed_time - delta_time + fracao * delta_time
 
             lap_time = instante_cruzamento - driver.lap_time_sum
@@ -384,11 +380,7 @@ def format_lap_update(
             if isinstance(d.tyre_compound, TyreCompound)
             else str(d.tyre_compound)
         )
-        pit_str = (
-            d.pit_status.name
-            if isinstance(d.pit_status, PitStatus)
-            else str(d.pit_status)
-        )
+        pit_str = d.pit_status.name if isinstance(d.pit_status, PitStatus) else str(d.pit_status)
         drivers_list.append(
             {
                 "driver_id": d.driver_id,
@@ -397,14 +389,10 @@ def format_lap_update(
                 "position": int(d.position),
                 "gap_to_leader": round(float(d.gap_to_leader), 3),
                 "gap_to_ahead": (
-                    round(float(d.gap_to_ahead), 3)
-                    if d.gap_to_ahead is not None
-                    else None
+                    round(float(d.gap_to_ahead), 3) if d.gap_to_ahead is not None else None
                 ),
                 "last_lap_time": (
-                    round(float(d.last_lap_time), 3)
-                    if d.last_lap_time is not None
-                    else None
+                    round(float(d.last_lap_time), 3) if d.last_lap_time is not None else None
                 ),
                 "tyre_compound": compound_str,
                 "tyre_age": int(d.tyre_age),

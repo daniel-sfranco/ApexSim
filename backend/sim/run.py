@@ -41,7 +41,6 @@ PILOTOS_POR_CODIGO: dict[str, tuple[str, str]] = {
 }
 
 
-
 def montar_grid_inicial(
     grid: list[str] | None = None,
     initial_tyres: dict[str, str] | None = None,
