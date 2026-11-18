@@ -169,3 +169,42 @@ def test_lap_result_reflete_os_dados_corretos_do_piloto(monkeypatch):
     assert resultado_a.lap_time == pytest.approx(driver_a.last_lap_time)
     assert resultado_a.position == driver_a.position
     assert resultado_a.pit_stop is False
+
+
+# ---------------------------------------------------------------------------
+# TESTES: grid e compostos iniciais escolhidos no setup
+# ---------------------------------------------------------------------------
+
+
+def test_montar_grid_inicial_respeita_grid_e_compostos():
+    """O grid enviado pelo setup define a ordem e os compostos de cada piloto."""
+    grid = ["NOR", "VER", "COL", "MAG"]
+    pneus = {"NOR": "SOFT", "VER": "HARD", "COL": "intermediate", "MAG": "X"}
+
+    estado = montar_grid_inicial(grid=grid, initial_tyres=pneus)
+
+    assert list(estado.drivers) == grid
+    assert [d.position for d in estado.drivers.values()] == [1, 2, 3, 4]
+    assert estado.drivers["NOR"].tyre_compound is TyreCompound.SOFT
+    assert estado.drivers["VER"].tyre_compound is TyreCompound.HARD
+    assert estado.drivers["COL"].tyre_compound is TyreCompound.INTERMEDIATE
+    # Composto desconhecido cai no padrão.
+    assert estado.drivers["MAG"].tyre_compound is TyreCompound.MEDIUM
+
+
+def test_montar_grid_inicial_inclui_pilotos_fora_do_grid_padrao():
+    """Códigos do setup ausentes do grid padrão usam o catálogo de pilotos."""
+    estado = montar_grid_inicial(grid=["COL"])
+
+    assert estado.drivers["COL"].name == "Franco Colapinto"
+    assert estado.drivers["COL"].team == "Williams"
+
+
+def test_montar_grid_inicial_sem_argumentos_mantem_grid_padrao():
+    """Sem payload do setup, o comportamento antigo (20 pilotos) é preservado."""
+    estado = montar_grid_inicial()
+
+    assert len(estado.drivers) == 20
+    assert all(
+        d.tyre_compound is TyreCompound.MEDIUM for d in estado.drivers.values()
+    )

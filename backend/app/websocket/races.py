@@ -10,6 +10,7 @@ Gerencia conexões, despacho de mensagens `lap_update` e encaminhamento de coman
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 from typing import Any
@@ -28,6 +29,24 @@ router = APIRouter()
 active_engines: dict[str, RaceEngine] = {}
 active_tasks: dict[str, asyncio.Task[None]] = {}
 connected_clients: dict[str, set[WebSocket]] = {}
+# Geração monotônica por corrida: garante que apenas o motor ATUAL de um
+# `race_id` consiga transmitir. Uma instância antiga (cancelada em um
+# "restart") nunca envia um envelope atrasado para os clientes da nova corrida.
+engine_generations: dict[str, int] = {}
+_generation_counter = itertools.count(1)
+
+
+def stop_engine(race_id: str) -> None:
+    """Encerra e remove o motor e a task assíncrona de uma corrida."""
+    engine = active_engines.pop(race_id, None)
+    if engine is not None:
+        engine.stop()
+
+    task = active_tasks.pop(race_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+
+    engine_generations.pop(race_id, None)
 
 
 def get_or_create_engine(
@@ -40,12 +59,13 @@ def get_or_create_engine(
     circuit_id: str = "interlagos",
 ) -> RaceEngine:
     """Recupera a instância ativa do RaceEngine ou inicializa uma nova para a corrida."""
-    if force_new and race_id in active_engines:
-        active_engines[race_id].stop()
-        if race_id in active_tasks:
-            active_tasks[race_id].cancel()
+    if force_new:
+        # Descarta completamente o motor anterior antes de criar o próximo.
+        stop_engine(race_id)
 
-    if race_id not in active_engines or force_new:
+    if race_id not in active_engines:
+        generation = next(_generation_counter)
+        engine_generations[race_id] = generation
         initial_state = state or montar_grid_inicial()
 
         track_map = None
@@ -54,8 +74,17 @@ def get_or_create_engine(
         except Exception as e:
             logger.warning(f"Não foi possível carregar TrackMap para '{circuit_id}': {e}")
 
-        async def _broadcast(envelope: dict[str, Any]) -> None:
-            clients = connected_clients.get(race_id, set()).copy()
+        async def _broadcast(
+            envelope: dict[str, Any],
+            *,
+            _race_id: str = race_id,
+            _generation: int = generation,
+        ) -> None:
+            # Um motor substituído não pode mais falar com os clientes.
+            if engine_generations.get(_race_id) != _generation:
+                return
+
+            clients = connected_clients.get(_race_id, set()).copy()
             if not clients:
                 return
             message = json.dumps(envelope)
@@ -103,7 +132,24 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
 
                 action = payload.get("action")
                 if action in ("restart", "start", "init"):
-                    new_state = montar_grid_inicial()
+                    # O setup envia o grid e os compostos escolhidos; sem isso a
+                    # corrida sempre largaria com o grid padrão e pneus MEDIUM.
+                    grid = payload.get("grid")
+                    if not isinstance(grid, list) or not grid:
+                        grid = None
+                    else:
+                        grid = [str(code) for code in grid][:20]
+
+                    pneus = (
+                        payload.get("initial_strategy")
+                        or payload.get("initialStrategy")
+                        or payload.get("initial_tyres")
+                        or payload.get("initialTyres")
+                    )
+                    if not isinstance(pneus, dict) or not pneus:
+                        pneus = None
+
+                    new_state = montar_grid_inicial(grid=grid, initial_tyres=pneus)
                     total_laps = payload.get("total_laps") or payload.get("totalLaps")
                     if total_laps:
                         new_state.total_laps = int(total_laps)
@@ -129,10 +175,14 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
     except WebSocketDisconnect:
         logger.info(f"Cliente WebSocket desconectado da corrida {race_id}")
     finally:
-        if race_id in connected_clients:
-            connected_clients[race_id].discard(websocket)
-            if not connected_clients[race_id]:
+        clients = connected_clients.get(race_id)
+        if clients is not None:
+            clients.discard(websocket)
+            if not clients:
+                # Último cliente saiu: não faz sentido continuar simulando a
+                # corrida antiga em segundo plano.
                 connected_clients.pop(race_id, None)
+                stop_engine(race_id)
 
 
 @router.websocket("/ws/races/{race_id}")

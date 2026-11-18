@@ -106,6 +106,10 @@ export const SetupForm: React.FC = () => {
           weather,
           track_temp: trackTemp,
           grid,
+          // Apenas pilotos presentes no grid, como exige o contrato da API.
+          initial_tyres: Object.fromEntries(
+            Object.entries(startingTyres).filter(([code]) => grid.includes(code))
+          ),
         }),
       }).catch(() => null);
     } catch {

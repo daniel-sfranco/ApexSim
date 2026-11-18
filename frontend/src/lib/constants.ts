@@ -151,7 +151,9 @@ export function formatLapTime(seconds: number | null | undefined): string {
 }
 
 export function formatGap(gap: number | null | undefined): string {
-  if (gap === null || gap === undefined) return "-";
-  if (gap === 0) return "LÍDER";
+  if (gap === null || gap === undefined || Number.isNaN(gap)) return "-";
+  // Liderança é definida pela posição, não pelo valor do gap: no início da
+  // prova todos os gaps são 0 e apenas o P1 pode ser chamado de líder.
+  if (gap === 0) return "-";
   return `+${gap.toFixed(3)}s`;
 }

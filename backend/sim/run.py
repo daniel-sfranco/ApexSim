@@ -14,36 +14,67 @@ from .state import (
 GRID_20_PILOTOS = [
     ("VER", "Max Verstappen", "Red Bull"),
     ("PER", "Sergio Pérez", "Red Bull"),
-    ("HAM", "Lewis Hamilton", "Ferrari"),
-    ("LEC", "Charles Leclerc", "Ferrari"),
+    ("HAM", "Lewis Hamilton", "Mercedes"),
     ("RUS", "George Russell", "Mercedes"),
-    ("ANT", "Andrea Kimi Antonelli", "Mercedes"),
+    ("ALB", "Alexander Albon", "Williams"),
+    ("COL", "Franco Colapinto", "Williams"),
     ("NOR", "Lando Norris", "McLaren"),
     ("PIA", "Oscar Piastri", "McLaren"),
     ("ALO", "Fernando Alonso", "Aston Martin"),
     ("STR", "Lance Stroll", "Aston Martin"),
     ("GAS", "Pierre Gasly", "Alpine"),
     ("DOO", "Jack Doohan", "Alpine"),
-    ("ALB", "Alexander Albon", "Williams"),
-    ("SAI", "Carlos Sainz", "Williams"),
+    ("LEC", "Charles Leclerc", "Ferrari"),
+    ("SAI", "Carlos Sainz", "Ferrari"),
     ("TSU", "Yuki Tsunoda", "RB"),
     ("LAW", "Liam Lawson", "RB"),
-    ("HUL", "Nico Hülkenberg", "Kick Sauber"),
-    ("BOR", "Gabriel Bortoleto", "Kick Sauber"),
+    ("ZHO", "Zhou Guanyu", "Kick Sauber"),
+    ("BOT", "Valtteri Bottas", "Kick Sauber"),
     ("OCO", "Esteban Ocon", "Haas"),
-    ("BEA", "Oliver Bearman", "Haas"),
+    ("MAG", "Kevin Magnussen", "Haas"),
 ]
 
+# Catálogo usado quando o cliente envia o grid escolhido no setup. Inclui os
+# pilotos da lista do frontend que não fazem parte do grid padrão acima.
+PILOTOS_POR_CODIGO: dict[str, tuple[str, str]] = {
+    driver_id: (name, team) for driver_id, name, team in GRID_20_PILOTOS
+}
 
-def montar_grid_inicial() -> RaceState:
-    """Constrói um RaceState de largada com 20 pilotos em grid.
 
-    Todos começam na volta 0, sem gap acumulado, pneu MEDIUM novo,
-    tanque cheio e fora do pit. Serve como "estado zero" para os testes
-    e, futuramente, como ponto de partida real da simulação.
+
+def montar_grid_inicial(
+    grid: list[str] | None = None,
+    initial_tyres: dict[str, str] | None = None,
+) -> RaceState:
+    """Constrói um RaceState de largada com os pilotos no grid.
+
+    Todos começam na volta 0, sem gap acumulado, tanque cheio e fora do pit.
+    Serve como "estado zero" para os testes e como ponto de partida real da
+    simulação.
+
+    Args:
+        grid: Códigos FIA na ordem de largada escolhida no setup. Quando
+            omitido, usa o grid padrão de 20 pilotos.
+        initial_tyres: Compostos iniciais por código (ex.: ``{"VER": "SOFT"}``).
+            Compostos ausentes ou desconhecidos caem no MEDIUM.
     """
+    if grid:
+        pilotos = []
+        for driver_id in grid:
+            name, team = PILOTOS_POR_CODIGO.get(driver_id, (driver_id, "Independent"))
+            pilotos.append((driver_id, name, team))
+    else:
+        pilotos = GRID_20_PILOTOS
+
     drivers = {}
-    for grid_position, (driver_id, name, team) in enumerate(GRID_20_PILOTOS, start=1):
+    for grid_position, (driver_id, name, team) in enumerate(pilotos, start=1):
+        composto = TyreCompound.MEDIUM
+        if initial_tyres and driver_id in initial_tyres:
+            try:
+                composto = TyreCompound[str(initial_tyres[driver_id]).strip().upper()]
+            except KeyError:
+                composto = TyreCompound.MEDIUM
+
         drivers[driver_id] = DriverState(
             driver_id=driver_id,
             name=name,
@@ -55,7 +86,7 @@ def montar_grid_inicial() -> RaceState:
             last_lap_time=None,
             gap_to_leader=0.0 if grid_position == 1 else float(grid_position - 1) * 0.3,
             gap_to_ahead=None if grid_position == 1 else 0.3,
-            tyre_compound=TyreCompound.MEDIUM,
+            tyre_compound=composto,
             tyre_age=0,
             fuel_load=110.0,
             pit_status=PitStatus.NONE,

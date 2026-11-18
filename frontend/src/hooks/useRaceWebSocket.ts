@@ -5,6 +5,10 @@ import { LapUpdate, EventUpdate } from "@/types";
 export function useRaceWebSocket(raceId?: string) {
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Verdadeiro apenas enquanto este hook está montado. Impede que timers de
+  // reconexão e callbacks de sockets antigos continuem vivos após navegar
+  // para outra corrida.
+  const isActiveRef = useRef(false);
 
   const {
     processLapUpdate,
@@ -31,8 +35,22 @@ export function useRaceWebSocket(raceId?: string) {
     return wsBase;
   }, [raceId]);
 
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+  }, []);
+
   const connect = useCallback(() => {
-    if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
+    if (!isActiveRef.current) return;
+
+    const existing = socketRef.current;
+    if (
+      existing &&
+      (existing.readyState === WebSocket.OPEN ||
+        existing.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
 
@@ -40,92 +58,136 @@ export function useRaceWebSocket(raceId?: string) {
     const url = getWsUrl();
     console.log(`[useRaceWebSocket] Conectando a ${url}...`);
 
+    let ws: WebSocket;
     try {
-      const ws = new WebSocket(url);
-      socketRef.current = ws;
-
-      ws.onopen = () => {
-        console.log("[useRaceWebSocket] Conexão estabelecida com sucesso!");
-        setConnectionStatus("connected");
-
-        // Envia imediatamente a configuração da corrida (grid, voltas, circuito, pneus)
-        // para reiniciar a simulação a partir da volta 0 com o novo grid sorteado
-        const { config } = useRaceStore.getState();
-        if (config && ws.readyState === WebSocket.OPEN) {
-          const initPayload = {
-            action: "restart",
-            race_id: raceId,
-            circuit_id: config.circuitId,
-            total_laps: config.totalLaps,
-            seed: config.seed,
-            weather: config.weather,
-            grid: config.grid,
-            initial_strategy: config.initialStrategy,
-          };
-          console.log("[useRaceWebSocket] Inicializando simulação com grid sorteado:", initPayload);
-          ws.send(JSON.stringify(initPayload));
-        }
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "lap_update") {
-            // Ignora envelopes de corrida antiga em andamento/finalizada
-            if (raceId && data.race_id && data.race_id !== raceId && data.current_lap > 0) {
-              console.log(
-                `[useRaceWebSocket] Ignorando lap_update antigo (${data.race_id}, volta ${data.current_lap})`
-              );
-              return;
-            }
-            processLapUpdate(data as LapUpdate);
-          } else if (data.type === "event_update") {
-            if (raceId && data.race_id && data.race_id !== raceId) {
-              return;
-            }
-            addEvent(data as EventUpdate);
-          }
-        } catch (err) {
-          console.error("[useRaceWebSocket] Erro ao analisar mensagem:", err);
-        }
-      };
-
-      ws.onerror = (err) => {
-        console.warn("[useRaceWebSocket] Erro na conexão WebSocket:", err);
-        setConnectionStatus("error");
-      };
-
-      ws.onclose = () => {
-        console.log("[useRaceWebSocket] Conexão encerrada. Tentando reconectar em 3s...");
-        setConnectionStatus("disconnected");
-        socketRef.current = null;
-        reconnectTimeoutRef.current = setTimeout(connect, 3000);
-      };
+      ws = new WebSocket(url);
     } catch (err) {
       console.error("[useRaceWebSocket] Falha ao instanciar WebSocket:", err);
       setConnectionStatus("error");
-      reconnectTimeoutRef.current = setTimeout(connect, 3000);
+      if (isActiveRef.current) {
+        clearReconnectTimer();
+        reconnectTimeoutRef.current = setTimeout(connect, 3000);
+      }
+      return;
     }
-  }, [getWsUrl, processLapUpdate, addEvent, setConnectionStatus, raceId]);
+
+    socketRef.current = ws;
+
+    ws.onopen = () => {
+      // Ignora callbacks de sockets que já foram substituídos/encerrados.
+      if (!isActiveRef.current || socketRef.current !== ws) return;
+
+      console.log("[useRaceWebSocket] Conexão estabelecida com sucesso!");
+      setConnectionStatus("connected");
+
+      // Envia imediatamente a configuração da corrida (grid, voltas, circuito, pneus)
+      // para reiniciar a simulação a partir da volta 0 com o novo grid sorteado
+      const { config } = useRaceStore.getState();
+      if (config && ws.readyState === WebSocket.OPEN) {
+        const initPayload = {
+          action: "restart",
+          race_id: raceId,
+          circuit_id: config.circuitId,
+          total_laps: config.totalLaps,
+          seed: config.seed,
+          weather: config.weather,
+          grid: config.grid,
+          initial_strategy: config.initialStrategy,
+        };
+        console.log(
+          "[useRaceWebSocket] Inicializando simulação com grid sorteado:",
+          initPayload
+        );
+        ws.send(JSON.stringify(initPayload));
+      }
+    };
+
+    ws.onmessage = (event) => {
+      if (!isActiveRef.current || socketRef.current !== ws) return;
+
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "lap_update") {
+          // Só aceita envelopes da corrida à qual este socket pertence.
+          if (raceId && data.race_id !== raceId) {
+            console.log(
+              `[useRaceWebSocket] Ignorando lap_update de outra corrida (${data.race_id})`
+            );
+            return;
+          }
+          processLapUpdate(data as LapUpdate);
+        } else if (data.type === "event_update") {
+          if (raceId && data.race_id !== raceId) {
+            return;
+          }
+          addEvent(data as EventUpdate);
+        }
+      } catch (err) {
+        console.error("[useRaceWebSocket] Erro ao analisar mensagem:", err);
+      }
+    };
+
+    ws.onerror = (err) => {
+      if (!isActiveRef.current || socketRef.current !== ws) return;
+      console.warn("[useRaceWebSocket] Erro na conexão WebSocket:", err);
+      setConnectionStatus("error");
+    };
+
+    ws.onclose = () => {
+      const isCurrent = socketRef.current === ws;
+      if (isCurrent) {
+        socketRef.current = null;
+      }
+
+      // Sockets obsoletos ou fechados de propósito (cleanup) não reconectam.
+      if (!isCurrent || !isActiveRef.current) return;
+
+      console.log(
+        "[useRaceWebSocket] Conexão encerrada. Tentando reconectar em 3s..."
+      );
+      setConnectionStatus("disconnected");
+      clearReconnectTimer();
+      reconnectTimeoutRef.current = setTimeout(connect, 3000);
+    };
+  }, [
+    getWsUrl,
+    processLapUpdate,
+    addEvent,
+    setConnectionStatus,
+    clearReconnectTimer,
+    raceId,
+  ]);
 
   useEffect(() => {
+    isActiveRef.current = true;
     connect();
 
     return () => {
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      if (socketRef.current) {
-        socketRef.current.close();
-        socketRef.current = null;
+      // Marca o hook como inativo ANTES de fechar: o onclose do socket não
+      // deve agendar reconexão nem tocar no store após o unmount.
+      isActiveRef.current = false;
+      clearReconnectTimer();
+
+      const ws = socketRef.current;
+      socketRef.current = null;
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        ws.close();
       }
     };
-  }, [connect]);
+  }, [connect, clearReconnectTimer]);
 
   // Enviar comando genérico
   const sendCommand = useCallback((cmd: Record<string, unknown>) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify(cmd));
     } else {
-      console.warn("[useRaceWebSocket] Não foi possível enviar comando: socket não conectado");
+      console.warn(
+        "[useRaceWebSocket] Não foi possível enviar comando: socket não conectado"
+      );
     }
   }, []);
 
