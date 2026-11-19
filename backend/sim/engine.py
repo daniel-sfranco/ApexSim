@@ -23,6 +23,7 @@ from sim.events import RaceIncident, SafetyCarStateMachine, sample_driver_lap_in
 from sim.overtaking import compound_name, sample_overtake
 from sim.physics import tyre_grip, tyre_time_loss
 from sim.state import (
+    DriverState,
     PitStatus,
     RaceState,
     TrackStatus,
@@ -52,6 +53,28 @@ RACE_CONTROL_TO_TRACK_STATUS: dict[str, TrackStatus] = {
     "GREEN": TrackStatus.GREEN,
     "VSC": TrackStatus.YELLOW,
     "SC": TrackStatus.SAFETY_CAR,
+}
+
+# Clima no vocabulário da heurística de estratégia (`strategy.heuristic`), que
+# distingue apenas pista seca ("dry") de molhada ("wet"); "damp" é neutro.
+WEATHER_TO_HEURISTIC_CONDITION: dict[str, str] = {
+    "DRY": "dry",
+    "SECO": "dry",
+    "DAMP": "damp",
+    "UMIDO": "damp",
+    "WET": "wet",
+    "MOLHADO": "wet",
+}
+
+# Janela (voltas) em que a parada do rival de trás ainda configura undercut.
+UNDERCUT_WINDOW_LAPS = 2
+
+# Compostos de chuva não existem na tabela de degradação seca (`sim.physics`);
+# a heurística os projeta usando o slick equivalente (mesma convenção de
+# `sim.state.tick()` e `sim.overtaking.compound_name`).
+STRATEGY_DEGRADATION_PROXY: dict[str, str] = {
+    "intermediate": "medium",
+    "wet": "medium",
 }
 
 
@@ -130,6 +153,9 @@ class RaceEngine:
         self.race_control = SafetyCarStateMachine()
         self._previous_race_lap = race_state.current_lap
         self._lap_incidents: list[RaceIncident] = []
+
+        # Volta da última parada de cada piloto (contexto de undercut da heurística).
+        self._last_pit_lap: dict[str, int] = {}
 
     # -----------------------------------------------------------------------
     # CONTROLES DE FLUXO EM TEMPO REAL
@@ -244,6 +270,11 @@ class RaceEngine:
         """Clima no vocabulário do gerador de incidentes (`sim.events`)."""
         return WEATHER_TO_INCIDENT_CONDITION.get(str(self.weather).strip().upper(), "seco")
 
+    @property
+    def heuristic_weather(self) -> str:
+        """Clima no vocabulário da heurística de estratégia (`strategy.heuristic`)."""
+        return WEATHER_TO_HEURISTIC_CONDITION.get(str(self.weather).strip().upper(), "dry")
+
     def _aggression_for(self, team: str) -> float:
         """Agressividade da equipe configurada na heurística de estratégia."""
         return self.pit_heuristic.team_aggression.get(team, 0.5)
@@ -277,9 +308,21 @@ class RaceEngine:
                 driver.overtake_cooldown_s = max(0.0, driver.overtake_cooldown_s - delta_time)
 
     def _evaluate_pit_stops(self) -> None:
-        """Avalia a heurística de pit stop e aplica a parada (perda do Contrato D4)."""
-        for driver in self.state.drivers.values():
-            if driver.is_retired or driver.pit_status != PitStatus.NONE:
+        """Avalia a heurística de pit stop e aplica a parada (perda do Contrato D4).
+
+        A heurística aceita dicts, então o motor passa adaptadores com os dados
+        que os dataclasses de domínio não carregam (clima e contexto do rival
+        imediatamente atrás), sem alterar `RaceState`/`DriverState`.
+        """
+        ativos = sorted(
+            (driver for driver in self.state.drivers.values() if not driver.is_retired),
+            key=lambda driver: driver.position,
+        )
+        posicoes = {driver.driver_id: idx for idx, driver in enumerate(ativos)}
+        race_adapter = self._strategy_race_state()
+
+        for driver in ativos:
+            if driver.pit_status != PitStatus.NONE:
                 continue
 
             # Avalia se deve parar quando estiver na aproximação final da volta
@@ -289,39 +332,93 @@ class RaceEngine:
                 or driver.lap_distance_covered < 0.05 * self.track_length
             )
 
-            if na_janela_de_pit and driver.current_lap >= 2:
-                decision = self.pit_heuristic.evaluate_driver(
-                    driver_state=driver,
-                    race_state=self.state,
-                    pit_lane_loss_s=self.pit_lane_loss_s,
-                    degradation_curve=lambda c, a: tyre_time_loss(c, a, self.track_temp),
+            if not (na_janela_de_pit and driver.current_lap >= 2):
+                continue
+
+            decision = self.pit_heuristic.evaluate_driver(
+                driver_state=self._strategy_driver_state(driver, ativos, posicoes),
+                race_state=race_adapter,
+                pit_lane_loss_s=self.pit_lane_loss_s,
+                degradation_curve=self._strategy_degradation_curve,
+            )
+            if not decision.should_pit:
+                continue
+
+            target_name = (decision.target_compound or "medium").upper()
+            try:
+                novo_composto = TyreCompound[target_name]
+            except KeyError:
+                novo_composto = TyreCompound.MEDIUM
+
+            driver.pit_status = PitStatus.IN_PIT
+            driver.pit_time_remaining = self.pit_lane_loss_s
+            driver.pit_stops_made += 1
+            self._last_pit_lap[driver.driver_id] = driver.current_lap
+            driver.pit_stop_in_this_lap = True
+            driver.pit_time_in_this_lap = self.pit_lane_loss_s
+            driver.tyre_compound = novo_composto
+            driver.tyre_age = 0
+
+            self._queue_event(
+                "PIT_STOP",
+                [driver.driver_id],
+                (
+                    f"{driver.name} ({driver.team}) realizou pit stop "
+                    f"e colocou pneus {target_name} ({decision.reason})."
+                ),
+                zone_id="pit_lane",
+            )
+
+    def _strategy_degradation_curve(self, compound: str, age_laps: int) -> float:
+        """Projeção de degradação da heurística, com proxy para compostos de chuva."""
+        name = str(compound).strip().lower()
+        return tyre_time_loss(
+            STRATEGY_DEGRADATION_PROXY.get(name, name),  # type: ignore[arg-type]
+            age_laps,
+            self.track_temp,
+        )
+
+    def _strategy_race_state(self) -> dict[str, Any]:
+        """`RaceState` adaptado ao contrato de entrada da heurística de estratégia."""
+        return {
+            "current_lap": self.state.current_lap,
+            "total_laps": self.state.total_laps,
+            "track_status": self.state.track_status,
+            "weather": self.heuristic_weather,
+            # VSC chega como YELLOW (Contrato D2); só o SC pleno libera a parada barata.
+            "safety_car": self.state.track_status == TrackStatus.SAFETY_CAR,
+            "red_flag": False,
+        }
+
+    def _strategy_driver_state(
+        self,
+        driver: DriverState,
+        ativos: list[DriverState],
+        posicoes: dict[str, int],
+    ) -> dict[str, Any]:
+        """`DriverState` adaptado, com o contexto do rival imediatamente atrás."""
+        indice = posicoes.get(driver.driver_id, -1)
+        rival = ativos[indice + 1] if 0 <= indice < len(ativos) - 1 else None
+        ultima_parada = self._last_pit_lap.get(rival.driver_id) if rival else None
+
+        return {
+            "team": driver.team,
+            "tyre_compound": driver.tyre_compound,
+            "tyre_age": driver.tyre_age,
+            "current_lap": driver.current_lap,
+            # O gap do rival até este piloto é o `gap_to_ahead` do próprio rival.
+            "gap_to_car_behind": rival.gap_to_ahead if rival else None,
+            "rival_behind_pitted": bool(
+                rival
+                and (
+                    rival.pit_status != PitStatus.NONE
+                    or (
+                        ultima_parada is not None
+                        and driver.current_lap - ultima_parada <= UNDERCUT_WINDOW_LAPS
+                    )
                 )
-                if not decision.should_pit:
-                    continue
-
-                target_name = (decision.target_compound or "medium").upper()
-                try:
-                    novo_composto = TyreCompound[target_name]
-                except KeyError:
-                    novo_composto = TyreCompound.MEDIUM
-
-                driver.pit_status = PitStatus.IN_PIT
-                driver.pit_time_remaining = self.pit_lane_loss_s
-                driver.pit_stops_made += 1
-                driver.pit_stop_in_this_lap = True
-                driver.pit_time_in_this_lap = self.pit_lane_loss_s
-                driver.tyre_compound = novo_composto
-                driver.tyre_age = 0
-
-                self._queue_event(
-                    "PIT_STOP",
-                    [driver.driver_id],
-                    (
-                        f"{driver.name} ({driver.team}) realizou pit stop "
-                        f"e colocou pneus {target_name} ({decision.reason})."
-                    ),
-                    zone_id="pit_lane",
-                )
+            ),
+        }
 
     def _resolve_overtakes(self) -> None:
         """Sorteia ultrapassagens do tick e emite os eventos correspondentes."""

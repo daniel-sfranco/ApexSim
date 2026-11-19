@@ -17,6 +17,7 @@ import pytest
 
 from sim.engine import RaceEngine
 from sim.events import RaceIncident
+from sim.physics import tyre_time_loss
 from sim.realtime_loop import run_realtime_loop
 from sim.run import montar_grid_inicial
 from sim.state import PitStatus, TrackStatus, TyreCompound, tick
@@ -450,3 +451,161 @@ def test_step_tick_samples_incidents_on_lap_crossing(monkeypatch):
 
     assert chamados
     assert all(lap == 4 for _, lap in chamados)
+
+
+# ---------------------------------------------------------------------------
+# Adaptadores da heurística de estratégia (implementação engine-only)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("weather", "esperado"),
+    [
+        ("DRY", "dry"),
+        ("seco", "dry"),
+        ("DAMP", "damp"),
+        ("UMIDO", "damp"),
+        ("WET", "wet"),
+        ("molhado", "wet"),
+        ("desconhecido", "dry"),
+    ],
+)
+def test_heuristic_weather_normalization(weather: str, esperado: str):
+    """O clima do Contrato D2 é traduzido para o vocabulário da heurística."""
+    engine = RaceEngine(
+        race_state=montar_grid_inicial(),
+        weather=weather,
+        base_lap_delay=0.01,
+    )
+    assert engine.heuristic_weather == esperado
+
+
+def test_evaluate_pit_stops_feed_weather_and_rival_context(monkeypatch):
+    """Os adaptadores entregam clima e contexto do rival sem tocar nos dataclasses."""
+    state = montar_grid_inicial(grid=["VER", "NOR", "LEC"])
+    engine = RaceEngine(
+        race_state=state,
+        weather="DAMP",
+        track_length=4000.0,
+        base_lap_delay=0.01,
+    )
+
+    ver = state.drivers["VER"]
+    nor = state.drivers["NOR"]
+    lec = state.drivers["LEC"]
+
+    for driver in (ver, nor, lec):
+        driver.current_lap = 5
+        driver.lap_distance_covered = 1000.0
+    ver.lap_distance_covered = 0.9 * 4000.0
+    nor.gap_to_ahead = 0.7
+
+    capturado: dict[str, Any] = {}
+
+    def spy(**kwargs: Any) -> PitDecision:
+        capturado.update(kwargs)
+        return PitDecision(should_pit=False, reason="STAY_OUT")
+
+    monkeypatch.setattr(engine.pit_heuristic, "evaluate_driver", spy)
+    engine._evaluate_pit_stops()
+
+    driver_state = capturado["driver_state"]
+    race_state = capturado["race_state"]
+    assert race_state["weather"] == "damp"
+    assert race_state["current_lap"] == state.current_lap
+    assert race_state["safety_car"] is False
+    assert race_state["red_flag"] is False
+    assert driver_state["gap_to_car_behind"] == pytest.approx(0.7)
+    assert driver_state["rival_behind_pitted"] is False
+
+    # Rival parou na volta anterior: undercut ativo.
+    engine._last_pit_lap["NOR"] = 4
+    engine._evaluate_pit_stops()
+    assert capturado["driver_state"]["rival_behind_pitted"] is True
+
+    # Fora da janela de undercut.
+    engine._last_pit_lap["NOR"] = 1
+    engine._evaluate_pit_stops()
+    assert capturado["driver_state"]["rival_behind_pitted"] is False
+
+    # Rival no box agora também configura undercut.
+    engine._last_pit_lap.clear()
+    nor.pit_status = PitStatus.IN_PIT
+    engine._evaluate_pit_stops()
+    assert capturado["driver_state"]["rival_behind_pitted"] is True
+
+
+def test_race_adapter_marks_safety_car_only_for_full_sc():
+    """VSC (YELLOW no Contrato D2) não é anunciado como Safety Car à heurística."""
+    state = montar_grid_inicial()
+    engine = RaceEngine(race_state=state, base_lap_delay=0.01)
+
+    state.track_status = TrackStatus.SAFETY_CAR
+    assert engine._strategy_race_state()["safety_car"] is True
+
+    state.track_status = TrackStatus.YELLOW
+    assert engine._strategy_race_state()["safety_car"] is False
+
+
+def test_clima_molhado_dispara_troca_para_pneu_de_chuva():
+    """Com pista molhada, a prioridade WEATHER da heurística passa a valer."""
+    state = montar_grid_inicial(grid=["VER", "NOR"])
+    engine = RaceEngine(
+        race_state=state,
+        weather="WET",
+        track_length=4000.0,
+        base_lap_delay=0.01,
+    )
+
+    ver = state.drivers["VER"]
+    nor = state.drivers["NOR"]
+    for driver in (ver, nor):
+        driver.current_lap = 5
+        driver.lap_distance_covered = 1000.0
+    ver.lap_distance_covered = 0.9 * 4000.0
+
+    engine.step_tick(delta_time=0.5)
+
+    assert ver.pit_stops_made == 1
+    assert ver.tyre_compound == TyreCompound.WET
+    evento = engine.pending_events[0]
+    assert evento["event_type"] == "PIT_STOP"
+    assert "WEATHER" in evento["description"]
+    assert engine._last_pit_lap["VER"] == 5
+
+
+def test_strategy_degradation_curve_maps_rain_compounds():
+    """Compostos de chuva usam o slick equivalente na projeção da heurística."""
+    engine = RaceEngine(race_state=montar_grid_inicial(), base_lap_delay=0.01)
+
+    esperado = tyre_time_loss("medium", 10, engine.track_temp)
+    assert engine._strategy_degradation_curve("wet", 10) == pytest.approx(esperado)
+    assert engine._strategy_degradation_curve("INTERMEDIATE", 10) == pytest.approx(esperado)
+    assert engine._strategy_degradation_curve("soft", 10) == pytest.approx(
+        tyre_time_loss("soft", 10, engine.track_temp)
+    )
+
+
+def test_clima_molhado_com_pneu_de_chuva_nao_quebra_heuristica():
+    """Pneu de chuva já montado não deve estourar a projeção de degradação."""
+    state = montar_grid_inicial(grid=["VER", "NOR"])
+    engine = RaceEngine(
+        race_state=state,
+        weather="WET",
+        track_length=4000.0,
+        base_lap_delay=0.01,
+    )
+
+    ver = state.drivers["VER"]
+    nor = state.drivers["NOR"]
+    for driver in (ver, nor):
+        driver.current_lap = 5
+        driver.lap_distance_covered = 1000.0
+    ver.lap_distance_covered = 0.9 * 4000.0
+    ver.tyre_compound = TyreCompound.WET
+    ver.tyre_age = 5
+
+    engine._evaluate_pit_stops()
+
+    assert ver.tyre_compound == TyreCompound.WET
+    assert ver.pit_stops_made <= 1

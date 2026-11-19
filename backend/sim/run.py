@@ -23,7 +23,7 @@ GRID_20_PILOTOS = [
     ("ALO", "Fernando Alonso", "Aston Martin"),
     ("STR", "Lance Stroll", "Aston Martin"),
     ("GAS", "Pierre Gasly", "Alpine"),
-    ("DOO", "Jack Doohan", "Alpine"),
+    ("HUL", "Nico Hülkenberg", "Alpine"),
     ("LEC", "Charles Leclerc", "Ferrari"),
     ("SAI", "Carlos Sainz", "Ferrari"),
     ("TSU", "Yuki Tsunoda", "RB"),
