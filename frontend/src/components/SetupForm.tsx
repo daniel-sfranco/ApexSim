@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRaceStore } from "@/store/raceStore";
 import { CIRCUITS, DEFAULT_DRIVERS, TYRE_INFO } from "@/lib/constants";
-import { TyreCompound, WeatherCondition } from "@/types";
+import { TyreCompound, WeatherCondition, CreateRaceRequest } from "@/types";
+import { checkHealth, createRace } from "@/lib/api";
 import {
   Trophy,
   Shuffle,
@@ -12,6 +13,9 @@ import {
   CloudSun,
   Settings2,
   ArrowRight,
+  Server,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 
 export const SetupForm: React.FC = () => {
@@ -28,6 +32,19 @@ export const SetupForm: React.FC = () => {
     config.initialStrategy || {}
   );
   const [isStarting, setIsStarting] = useState(false);
+  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Checa status da API backend ao montar o componente
+  useEffect(() => {
+    checkHealth()
+      .then(() => {
+        setApiStatus("online");
+      })
+      .catch(() => {
+        setApiStatus("offline");
+      });
+  }, []);
 
   // Mudar circuito
   const handleSelectCircuit = (circuitId: string) => {
@@ -72,10 +89,11 @@ export const SetupForm: React.FC = () => {
     }));
   };
 
-  // Submissão do Setup
+  // Submissão do Setup com Integração à API POST /api/races
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsStarting(true);
+    setStatusMessage(null);
 
     const circuitObj = CIRCUITS.find((c) => c.id === selectedCircuit);
 
@@ -92,47 +110,76 @@ export const SetupForm: React.FC = () => {
     reorderGrid(grid);
     resetRace();
 
-    // Cria a corrida no backend e usa o `race_id` devolvido: é ele que permite ao
-    // WebSocket carregar circuito, voltas e clima gravados pela API. Se a API
-    // estiver indisponível, cai no modo memória com um id local.
-    let raceId = "race-" + Math.random().toString(36).substring(2, 9);
+    let targetRaceId = "race-" + Math.random().toString(36).substring(2, 9);
+
+    const requestBody: CreateRaceRequest = {
+      circuit_id: selectedCircuit,
+      total_laps: Number(totalLaps),
+      seed: Number(seed),
+      weather,
+      track_temp: Number(trackTemp),
+      grid,
+      initial_tyres: startingTyres,
+    };
+
     try {
-      const apiUrl = (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
-      const resposta = await fetch(`${apiUrl}/api/races`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          circuit_id: selectedCircuit,
-          total_laps: totalLaps,
-          seed,
-          weather,
-          track_temp: trackTemp,
-          grid,
-          // Apenas pilotos presentes no grid, como exige o contrato da API.
-          initial_tyres: Object.fromEntries(
-            Object.entries(startingTyres).filter(([code]) => grid.includes(code))
-          ),
-        }),
-      });
-      if (resposta.ok) {
-        const dados = await resposta.json();
-        if (typeof dados?.race_id === "string" && dados.race_id) {
-          raceId = dados.race_id;
-        }
-      } else {
-        console.warn(
-          `[SetupForm] POST /api/races falhou (${resposta.status}); usando corrida em memória`
-        );
+      // Dispara criação oficial da corrida na API do ApexSim
+      const apiResponse = await createRace(requestBody);
+      if (apiResponse && apiResponse.race_id) {
+        targetRaceId = apiResponse.race_id;
+        console.log(`[SetupForm] Corrida criada no backend com ID: ${targetRaceId}`);
       }
-    } catch (erro) {
-      console.warn("[SetupForm] API indisponível; usando corrida em memória", erro);
+    } catch (err: any) {
+      console.warn(
+        `[SetupForm] API backend não respondeu (iniciando em modo local):`,
+        err?.message || err
+      );
+      setStatusMessage("API backend offline ou indisponível. Iniciando cockpit em modo de simulação autônoma...");
     }
 
-    navigate(`/race/${raceId}`);
+    setTimeout(() => {
+      navigate(`/race/${targetRaceId}`);
+    }, 400);
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8 font-sans max-w-6xl mx-auto">
+      {/* Indicador de Status da API */}
+      <div className="flex items-center justify-between bg-f1-surface border border-f1-border rounded-lg px-4 py-2.5 text-xs font-mono">
+        <div className="flex items-center gap-2">
+          <Server className="w-4 h-4 text-f1-muted" />
+          <span className="text-slate-300 font-semibold">Status do Servidor API:</span>
+          {apiStatus === "checking" && (
+            <span className="text-amber-400 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+              Verificando conexão...
+            </span>
+          )}
+          {apiStatus === "online" && (
+            <span className="text-emerald-400 flex items-center gap-1 font-bold">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              API ApexSim Online (FastAPI :8000)
+            </span>
+          )}
+          {apiStatus === "offline" && (
+            <span className="text-amber-400/90 flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              API Offline (Usando simulação local / Mock)
+            </span>
+          )}
+        </div>
+
+        <span className="text-[11px] text-f1-muted">
+          Contratos D2, D3 e D4 Ativos
+        </span>
+      </div>
+
+      {statusMessage && (
+        <div className="p-3 bg-amber-950/40 border border-amber-600/60 rounded-lg text-xs font-mono text-amber-200">
+          {statusMessage}
+        </div>
+      )}
+
       {/* 1. SELETOR DE CIRCUITO */}
       <section className="bg-f1-surface border border-f1-border rounded-xl p-6 shadow-xl">
         <div className="flex items-center gap-2 mb-4">
@@ -174,144 +221,123 @@ export const SetupForm: React.FC = () => {
       </section>
 
       {/* 2. CONDIÇÕES AMBIENTAIS E SIMULAÇÃO */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Clima e Temperatura */}
-        <div className="bg-f1-surface border border-f1-border rounded-xl p-6 shadow-xl">
-          <div className="flex items-center gap-2 mb-4">
-            <CloudSun className="w-5 h-5 text-amber-400" />
-            <h2 className="text-lg font-bold text-white uppercase tracking-wider font-mono">
-              2. Condições Climáticas
-            </h2>
-          </div>
-
-          <div className="space-y-4 font-mono text-sm">
-            <div>
-              <label className="block text-xs text-f1-muted mb-2 uppercase">
-                Condição do Asfalto
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: "DRY", label: "☀️ Seco" },
-                  { id: "DAMP", label: "⛅ Úmido" },
-                  { id: "WET", label: "🌧️ Chuva" },
-                ].map((item) => (
-                  <button
-                    type="button"
-                    key={item.id}
-                    onClick={() => setWeather(item.id as WeatherCondition)}
-                    className={`py-2 px-3 rounded border text-xs font-bold transition-colors ${
-                      weather === item.id
-                        ? "bg-f1-red text-white border-f1-red"
-                        : "bg-f1-dark text-slate-300 border-f1-border hover:bg-f1-card"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-f1-muted uppercase">Temperatura de Pista</span>
-                <span className="text-white font-bold">{trackTemp}°C</span>
-              </div>
-              <input
-                type="range"
-                min="15"
-                max="55"
-                value={trackTemp}
-                onChange={(e) => setTrackTemp(Number(e.target.value))}
-                className="w-full accent-f1-red cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-f1-muted">
-                <span>15°C (Fria)</span>
-                <span>35°C (Ideal)</span>
-                <span>55°C (Extrema)</span>
-              </div>
-            </div>
-          </div>
+      <section className="bg-f1-surface border border-f1-border rounded-xl p-6 shadow-xl">
+        <div className="flex items-center gap-2 mb-4">
+          <CloudSun className="w-5 h-5 text-f1-red" />
+          <h2 className="text-lg font-bold text-white uppercase tracking-wider font-mono">
+            2. Condições da Pista e Simulação
+          </h2>
         </div>
 
-        {/* Parâmetros do Motor */}
-        <div className="bg-f1-surface border border-f1-border rounded-xl p-6 shadow-xl">
-          <div className="flex items-center gap-2 mb-4">
-            <Settings2 className="w-5 h-5 text-sky-400" />
-            <h2 className="text-lg font-bold text-white uppercase tracking-wider font-mono">
-              3. Parâmetros da Prova
-            </h2>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 font-mono text-sm">
+          {/* Voltas Totais */}
+          <div>
+            <label className="block text-xs text-f1-muted uppercase mb-2">
+              Voltas Totais
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={totalLaps}
+              onChange={(e) => setTotalLaps(Number(e.target.value))}
+              className="w-full bg-f1-card border border-f1-border rounded px-3 py-2 text-white focus:outline-none focus:border-f1-red"
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-4 font-mono text-sm">
-            <div>
-              <label className="block text-xs text-f1-muted mb-1 uppercase">
-                Total de Voltas
-              </label>
-              <input
-                type="number"
-                min="5"
-                max="100"
-                value={totalLaps}
-                onChange={(e) => setTotalLaps(Number(e.target.value))}
-                className="w-full bg-f1-dark border border-f1-border rounded px-3 py-2 text-white font-bold focus:border-f1-red focus:outline-none"
-              />
-              <span className="text-[10px] text-f1-muted">Mínimo 5, Máximo 100</span>
-            </div>
+          {/* Clima */}
+          <div>
+            <label className="block text-xs text-f1-muted uppercase mb-2">
+              Clima Predominante
+            </label>
+            <select
+              value={weather}
+              onChange={(e) => setWeather(e.target.value as WeatherCondition)}
+              className="w-full bg-f1-card border border-f1-border rounded px-3 py-2 text-white focus:outline-none focus:border-f1-red"
+            >
+              <option value="DRY">Seco (Pista Seca)</option>
+              <option value="DAMP">Úmido (Damp)</option>
+              <option value="WET">Chuva (Pista Molhada)</option>
+            </select>
+          </div>
 
-            <div>
-              <label className="block text-xs text-f1-muted mb-1 uppercase">
-                Seed Determinística
-              </label>
-              <input
-                type="number"
-                value={seed}
-                onChange={(e) => setSeed(Number(e.target.value))}
-                className="w-full bg-f1-dark border border-f1-border rounded px-3 py-2 text-white font-bold focus:border-f1-red focus:outline-none"
-              />
-              <span className="text-[10px] text-f1-muted">Mesma seed = mesma corrida</span>
-            </div>
+          {/* Temperatura da Pista */}
+          <div>
+            <label className="block text-xs text-f1-muted uppercase mb-2">
+              Temp. da Pista (°C)
+            </label>
+            <input
+              type="number"
+              min={10}
+              max={60}
+              value={trackTemp}
+              onChange={(e) => setTrackTemp(Number(e.target.value))}
+              className="w-full bg-f1-card border border-f1-border rounded px-3 py-2 text-white focus:outline-none focus:border-f1-red"
+            />
+          </div>
+
+          {/* Seed Aleatório */}
+          <div>
+            <label className="block text-xs text-f1-muted uppercase mb-2">
+              Seed Determinística
+            </label>
+            <input
+              type="number"
+              value={seed}
+              onChange={(e) => setSeed(Number(e.target.value))}
+              className="w-full bg-f1-card border border-f1-border rounded px-3 py-2 text-white focus:outline-none focus:border-f1-red"
+            />
           </div>
         </div>
       </section>
 
-      {/* 4. GRID DE LARGADA E ESTRATÉGIA INICIAL */}
+      {/* 3. GRID DE LARGADA E ESTRATÉGIA INICIAL */}
       <section className="bg-f1-surface border border-f1-border rounded-xl p-6 shadow-xl">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-400" />
+            <Trophy className="w-5 h-5 text-f1-red" />
             <h2 className="text-lg font-bold text-white uppercase tracking-wider font-mono">
-              4. Grid de Largada & Compostos (20 Pilotos)
+              3. Grid de Largada e Compostos Iniciais (20 Pilotos)
             </h2>
           </div>
 
           <button
             type="button"
             onClick={handleShuffleGrid}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-f1-card hover:bg-f1-border border border-f1-border text-xs font-mono font-semibold text-slate-200 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-f1-card hover:bg-f1-border border border-f1-border text-xs font-mono text-slate-300 hover:text-white transition-colors"
           >
-            <Shuffle className="w-3.5 h-3.5" />
-            Sortear Grid
+            <Shuffle className="w-3.5 h-3.5 text-amber-400" />
+            Sortear Posições
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-xs">
+        <p className="text-xs text-f1-muted mb-4 font-mono">
+          Reordene os pilotos para a largada e escolha o composto inicial de cada um (Soft, Medium, Hard).
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono">
           {grid.map((code, idx) => {
-            const driverInfo =
-              DEFAULT_DRIVERS.find((d) => d.code === code) || DEFAULT_DRIVERS[idx];
+            const driverInfo = DEFAULT_DRIVERS.find((d) => d.code === code) || {
+              code,
+              name: code,
+              team: "Independente",
+              teamColor: "#8E9AA8",
+              defaultTyre: "MEDIUM" as TyreCompound,
+            };
             const currentTyre = startingTyres[code] || driverInfo.defaultTyre;
 
             return (
               <div
                 key={code}
-                className="flex items-center justify-between p-2 rounded bg-f1-dark/80 border border-f1-border hover:border-slate-500 transition-colors"
+                className="flex items-center justify-between p-2.5 rounded-lg bg-f1-dark/80 border border-f1-border/60 hover:border-slate-500 transition-colors text-xs"
               >
-                {/* Posição e Identificação */}
-                <div className="flex items-center gap-2">
-                  <span className="w-6 text-center font-bold text-f1-muted">
-                    P{idx + 1}
+                {/* Posição e Nome */}
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <span className="font-bold text-f1-muted w-5 text-center">
+                    {idx + 1}º
                   </span>
                   <div
-                    className="w-1 h-5 rounded-full"
+                    className="w-1.5 h-5 rounded-full flex-shrink-0"
                     style={{ backgroundColor: driverInfo.teamColor }}
                   />
                   <div>

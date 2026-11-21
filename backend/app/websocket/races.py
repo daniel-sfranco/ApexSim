@@ -25,17 +25,19 @@ import asyncio
 import itertools
 import json
 import logging
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from sqlalchemy.orm import Session
 
-from app import db_sessao
-from app.corrida_persistida import carregar_corrida_do_banco, estado_inicial
-from app.persistencia import GravadorDeCorrida, eventos_do_motor
+from app.db_sessao import engine as db_engine
+from app.models.track import TrackMap
+from app.persistencia import GravadorDeCorrida
+from db.repositorio import carregar_corrida
 from sim.engine import RaceEngine
 from sim.run import montar_grid_inicial
-from sim.state import LapResult, RaceState
-from sim.track import TrackMap
+from sim.state import DriverState, PitStatus, RaceState, TrackStatus, TyreCompound
 
 logger = logging.getLogger("apexsim.websocket")
 
@@ -44,97 +46,74 @@ router = APIRouter()
 active_engines: dict[str, RaceEngine] = {}
 active_tasks: dict[str, asyncio.Task[None]] = {}
 connected_clients: dict[str, set[WebSocket]] = {}
-# Geração monotônica por corrida: garante que apenas o motor ATUAL de um
-# `race_id` consiga transmitir. Uma instância antiga (cancelada em um
-# "restart") nunca envia um envelope atrasado para os clientes da nova corrida.
-engine_generations: dict[str, int] = {}
-_generation_counter = itertools.count(1)
-# Gravador da corrida em andamento (só para corridas que existem no banco).
-active_recorders: dict[str, GravadorDeCorrida] = {}
-# Gravação do status `aborted` ainda em voo. Quem recriar o motor da mesma corrida
-# espera ela terminar, senão o `aborted` poderia chegar depois do novo `running`.
-_pending_aborts: dict[str, asyncio.Task[None]] = {}
-# Corridas cujo motor já foi configurado por um `init`/`start`/`restart` do cliente
-# ou carregado do banco. Diferencia o motor "placeholder" criado na conexão (só
-# para enviar o snapshot inicial) de uma corrida realmente inicializada: o primeiro
-# `init` pode reconfigurar o placeholder, mas um `init` de espectador numa corrida
-# já inicializada apenas reenvia o snapshot.
-initialized_race_ids: set[str] = set()
 
 
-def stop_engine(race_id: str, *, abort: bool = False) -> None:
-    """Encerra e remove o motor e a task assíncrona de uma corrida.
-
-    Args:
-        race_id: Corrida a encerrar.
-        abort: True quando a corrida acaba sem ninguém assistindo (último cliente
-            saiu). Se ela estava sendo gravada e não terminou, vira `aborted`.
-            Num `restart` é False: o motor novo vai limpar e regravar a corrida.
-    """
-    engine = active_engines.pop(race_id, None)
-    if engine is not None:
-        engine.stop()
-
-    task = active_tasks.pop(race_id, None)
-    if task is not None and not task.done():
-        task.cancel()
-
-    engine_generations.pop(race_id, None)
-    initialized_race_ids.discard(race_id)
-
-    gravador = active_recorders.pop(race_id, None)
-    if gravador is not None:
-        terminou = engine is not None and engine.state.is_finished
-        if not abort:
-            # Restart: o motor novo vai limpar e regravar; nada deste pode entrar depois.
-            gravador.desativar()
-        elif gravador.ativo:
-            # Se a corrida terminou, o `on_finished` normalmente já gravou `finished` e
-            # desativou o gravador; isto cobre o caso de a task ter sido cancelada antes.
-            status = "finished" if terminou else "aborted"
-            tarefa = asyncio.create_task(gravador.mudar_status(status))
-            _pending_aborts[race_id] = tarefa
-
-            def _esquecer(feita: asyncio.Task[None], r: str = race_id) -> None:
-                # Só remove se ninguém registrou outra gravação para a mesma corrida.
-                if _pending_aborts.get(r) is feita:
-                    _pending_aborts.pop(r, None)
-
-            tarefa.add_done_callback(_esquecer)
-
-
-def _recording_hooks(race_id: str, gravador: GravadorDeCorrida) -> dict[str, Any]:
-    """Ganchos `on_lap_closed`/`on_finished` do motor que gravam no banco.
-
-    Falha de banco não derruba a corrida ao vivo: o erro é registrado, o gravador é
-    desativado (para não deixar buracos no meio do histórico) e a transmissão segue.
-    """
-
-    async def on_lap_closed(voltas: list[LapResult], eventos: list[dict[str, Any]]) -> None:
-        if not gravador.ativo:
-            return
-        try:
-            await gravador.registrar_volta(voltas, eventos_do_motor(eventos))
-        except Exception:
-            logger.exception("Falha ao gravar volta da corrida %s; gravação desligada", race_id)
-            gravador.desativar()
-
-    async def on_finished() -> None:
-        try:
-            await gravador.mudar_status("finished")
-        except Exception:
-            logger.exception("Falha ao marcar a corrida %s como finished", race_id)
-
-    return {"on_lap_closed": on_lap_closed, "on_finished": on_finished}
-
-
-def _load_track_map(circuit_id: str) -> TrackMap | None:
-    """Carrega o TrackMap do circuito, degradando para None se indisponível."""
+def _montar_estado_da_corrida_do_banco(
+    race_id_str: str,
+) -> tuple[RaceState | None, float, int, str, float]:
+    """Tenta carregar os dados de corrida configurados previamente no banco."""
     try:
-        return TrackMap.load(circuit_id)
+        race_uuid = uuid.UUID(race_id_str)
+        with Session(db_engine()) as session:
+            carregada = carregar_corrida(session, race_uuid)
+            track_length = 4309.0
+            try:
+                tm = TrackMap.load(carregada.circuit_id)
+                track_length = float(tm.length_m)
+            except Exception:
+                pass
+
+            drivers = {}
+            for entry in carregada.grid:
+                initial_tyre_str = (carregada.config.get("initial_tyres") or {}).get(
+                    entry.code, "MEDIUM"
+                )
+                try:
+                    tyre_enum = TyreCompound[initial_tyre_str]
+                except Exception:
+                    tyre_enum = TyreCompound.MEDIUM
+
+                drivers[entry.code] = DriverState(
+                    driver_id=entry.code,
+                    name=entry.name,
+                    team=entry.team,
+                    position=entry.grid_position,
+                    lap_distance_covered=0.0,
+                    total_distance_covered=0.0,
+                    current_lap=0,
+                    last_lap_time=None,
+                    gap_to_leader=(
+                        0.0
+                        if entry.grid_position == 1
+                        else float(entry.grid_position - 1) * 0.3
+                    ),
+                    gap_to_ahead=None if entry.grid_position == 1 else 0.3,
+                    tyre_compound=tyre_enum,
+                    tyre_age=0,
+                    fuel_load=110.0,
+                    pit_status=PitStatus.NONE,
+                    pit_stops_made=0,
+                    is_retired=False,
+                    base_velocity=20.0,
+                    lap_time_sum=0.0,
+                    drs_active=False,
+                )
+
+            state = RaceState(
+                current_lap=0,
+                total_laps=carregada.total_laps,
+                track_status=TrackStatus.GREEN,
+                drivers=drivers,
+                lap_history=[],
+                elapsed_time=0.0,
+                is_finished=False,
+            )
+            weather = carregada.config.get("weather", "DRY")
+            track_temp = float(carregada.config.get("track_temp", 32.0))
+            return state, track_length, carregada.seed, weather, track_temp
     except Exception as e:
-        logger.warning(f"Não foi possível carregar TrackMap para '{circuit_id}': {e}")
-        return None
+        logger.debug(f"Não foi possível carregar corrida do banco ({race_id_str}): {e}")
+        return None, 4309.0, 42, "DRY", 32.0
 
 
 def get_or_create_engine(
@@ -147,34 +126,55 @@ def get_or_create_engine(
     circuit_id: str = "interlagos",
     gravador: GravadorDeCorrida | None = None,
 ) -> RaceEngine:
-    """Recupera a instância ativa do RaceEngine ou inicializa uma nova para a corrida.
+    """Recupera a instância ativa do RaceEngine ou inicializa uma nova para a corrida."""
+    if force_new and race_id in active_engines:
+        active_engines[race_id].stop()
+        if race_id in active_tasks:
+            active_tasks[race_id].cancel()
 
-    Com `gravador`, o motor novo grava cada volta fechada no banco. O gravador já
-    deve estar preparado (`GravadorDeCorrida.preparar`).
-    """
-    if force_new:
-        # Descarta completamente o motor anterior antes de criar o próximo.
-        stop_engine(race_id)
+    if race_id not in active_engines or force_new:
+        track_length = 4309.0
+        initial_state = state
+        if initial_state is None:
+            (
+                db_state,
+                db_track_len,
+                db_seed,
+                db_weather,
+                db_track_temp,
+            ) = _montar_estado_da_corrida_do_banco(race_id)
+            if db_state is not None:
+                initial_state = db_state
+                track_length = db_track_len
+                seed = db_seed
+                weather = db_weather
+                track_temp = db_track_temp
+            else:
+                initial_state = montar_grid_inicial()
 
-    if race_id not in active_engines:
-        generation = next(_generation_counter)
-        engine_generations[race_id] = generation
+        gravador: GravadorDeCorrida | None = None
+        try:
+            race_uuid = uuid.UUID(race_id)
+            gravador = GravadorDeCorrida(db_engine(), race_uuid)
+            asyncio.create_task(gravador.mudar_status("running"))
+        except Exception:
+            gravador = None
 
-        track_map = _load_track_map(circuit_id)
-        comprimento = track_map.length_m if track_map is not None else 4309.0
-        initial_state = state or montar_grid_inicial(track_length=comprimento)
+        async def _broadcast(envelope: dict[str, Any]) -> None:
+            if gravador and envelope.get("type") == "lap_update":
+                try:
+                    c_lap = envelope.get("current_lap")
+                    voltas_da_volta = [
+                        v for v in engine.state.lap_history if v.lap_number == c_lap
+                    ]
+                    if voltas_da_volta:
+                        await gravador.registrar_volta(voltas_da_volta)
+                    if engine.state.is_finished:
+                        await gravador.mudar_status("finished")
+                except Exception as err:
+                    logger.debug(f"Aviso ao persistir volta no banco: {err}")
 
-        async def _broadcast(
-            envelope: dict[str, Any],
-            *,
-            _race_id: str = race_id,
-            _generation: int = generation,
-        ) -> None:
-            # Um motor substituído não pode mais falar com os clientes.
-            if engine_generations.get(_race_id) != _generation:
-                return
-
-            clients = connected_clients.get(_race_id, set()).copy()
+            clients = connected_clients.get(race_id, set()).copy()
             if not clients:
                 return
             message = json.dumps(envelope)
@@ -182,11 +182,11 @@ def get_or_create_engine(
                 try:
                     await ws.send_text(message)
                 except Exception:
-                    # Desconexões tratadas no handler principal
                     pass
 
         engine = RaceEngine(
             race_state=initial_state,
+            track_length=track_length,
             race_id=race_id,
             seed=seed,
             weather=weather,
