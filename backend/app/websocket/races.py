@@ -49,6 +49,15 @@ def stop_engine(race_id: str) -> None:
     engine_generations.pop(race_id, None)
 
 
+def _load_track_map(circuit_id: str) -> TrackMap | None:
+    """Carrega o TrackMap do circuito, degradando para None se indisponível."""
+    try:
+        return TrackMap.load(circuit_id)
+    except Exception as e:
+        logger.warning(f"Não foi possível carregar TrackMap para '{circuit_id}': {e}")
+        return None
+
+
 def get_or_create_engine(
     race_id: str,
     state: RaceState | None = None,
@@ -66,13 +75,10 @@ def get_or_create_engine(
     if race_id not in active_engines:
         generation = next(_generation_counter)
         engine_generations[race_id] = generation
-        initial_state = state or montar_grid_inicial()
 
-        track_map = None
-        try:
-            track_map = TrackMap.load(circuit_id)
-        except Exception as e:
-            logger.warning(f"Não foi possível carregar TrackMap para '{circuit_id}': {e}")
+        track_map = _load_track_map(circuit_id)
+        comprimento = track_map.length_m if track_map is not None else 4309.0
+        initial_state = state or montar_grid_inicial(track_length=comprimento)
 
         async def _broadcast(
             envelope: dict[str, Any],
@@ -149,14 +155,21 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
                     if not isinstance(pneus, dict) or not pneus:
                         pneus = None
 
-                    new_state = montar_grid_inicial(grid=grid, initial_tyres=pneus)
+                    circuit_id = (
+                        payload.get("circuit_id") or payload.get("circuitId") or "interlagos"
+                    )
+                    track_map_setup = _load_track_map(circuit_id)
+                    new_state = montar_grid_inicial(
+                        grid=grid,
+                        initial_tyres=pneus,
+                        track_length=(
+                            track_map_setup.length_m if track_map_setup is not None else 4309.0
+                        ),
+                    )
                     total_laps = payload.get("total_laps") or payload.get("totalLaps")
                     if total_laps:
                         new_state.total_laps = int(total_laps)
 
-                    circuit_id = (
-                        payload.get("circuit_id") or payload.get("circuitId") or "interlagos"
-                    )
                     engine = get_or_create_engine(
                         race_id=race_id,
                         state=new_state,

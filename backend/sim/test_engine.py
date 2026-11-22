@@ -20,7 +20,7 @@ from sim.events import RaceIncident
 from sim.physics import tyre_time_loss
 from sim.realtime_loop import run_realtime_loop
 from sim.run import montar_grid_inicial
-from sim.state import PitStatus, TrackStatus, TyreCompound, tick
+from sim.state import PitStatus, TrackStatus, TyreCompound
 from sim.track import TrackMap
 from strategy.heuristic import PitDecision
 
@@ -122,14 +122,9 @@ def test_engine_step_lap(base_engine: RaceEngine):
 
 
 def test_bandeirada_espera_apenas_quem_esta_na_ultima_volta():
-    """Só os pilotos na última volta precisam cruzar; a penúltima não."""
-    state = montar_grid_inicial()
+    """Só os pilotos na última volta precisam cruzar; os atrasados não."""
+    state = montar_grid_inicial(grid=["VER", "OCO", "MAG"], track_length=2000.0)
     state.total_laps = 2
-    # OCO (15 m/s) ainda estará na última volta quando o líder bandeirar
-    # e precisa cruzar a linha; MAG (8 m/s) estará na penúltima volta e
-    # não precisa concluir a corrida.
-    state.drivers["OCO"].base_velocity = 15.0
-    state.drivers["MAG"].base_velocity = 8.0
 
     engine = RaceEngine(
         race_state=state,
@@ -138,27 +133,44 @@ def test_bandeirada_espera_apenas_quem_esta_na_ultima_volta():
         base_lap_delay=0.01,
     )
 
-    for _ in range(50):
-        engine.step_lap()
-        if state.drivers["OCO"].current_lap < state.total_laps:
-            # Enquanto falta piloto na última volta, a corrida segue em andamento.
-            assert engine.state.is_finished is False
+    ver = state.drivers["VER"]
+    oco = state.drivers["OCO"]
+    mag = state.drivers["MAG"]
+
+    # Cenário de bandeirada montado de forma determinística: o líder já concluiu
+    # as duas voltas, OCO está na última volta (falta meia volta) e MAG está duas
+    # voltas atrás, portanto não precisa completar a corrida.
+    ver.current_lap = 2
+    ver.total_distance_covered = 2 * 2000.0
+    ver.lap_distance_covered = 0.0
+    oco.current_lap = 1
+    oco.total_distance_covered = 2000.0 + 1500.0
+    oco.lap_distance_covered = 1500.0
+    mag.current_lap = 0
+    mag.total_distance_covered = 100.0
+    mag.lap_distance_covered = 100.0
+
+    # Com OCO ainda na última volta, a corrida não pode encerrar.
+    engine.step_tick(5.0)
+    assert oco.current_lap == 1
+    assert engine.state.is_finished is False
+
+    # OCO cruza a linha e conclui a última volta: aí sim a corrida termina.
+    for _ in range(20):
+        engine.step_tick(5.0)
         if engine.state.is_finished:
             break
 
     assert engine.state.is_finished is True
+    assert oco.current_lap == state.total_laps
 
-    # Quem estava na última volta completou a distância.
-    assert state.drivers["OCO"].current_lap == state.total_laps
-
-    # Quem estava na penúltima volta não precisou terminar.
-    assert state.drivers["MAG"].current_lap < state.total_laps - 1
-    assert state.drivers["MAG"].position == 20
+    # Quem estava duas voltas atrás não precisou terminar.
+    assert mag.current_lap < state.total_laps - 1
 
     # Congelados após a bandeirada: ninguém avança mais.
     distancias = {k: d.total_distance_covered for k, d in state.drivers.items()}
     voltas = {k: d.current_lap for k, d in state.drivers.items()}
-    tick(state, delta_time=5.0, track_length=2000.0, rng=engine.rng)
+    engine.step_tick(5.0)
     for driver_id, driver in state.drivers.items():
         assert driver.total_distance_covered == distancias[driver_id]
         assert driver.current_lap == voltas[driver_id]
@@ -166,10 +178,10 @@ def test_bandeirada_espera_apenas_quem_esta_na_ultima_volta():
 
 def test_engine_determinism_with_seed():
     """Duas instâncias com a mesma seed e grid produzem os mesmos tempos e gaps."""
-    state1 = montar_grid_inicial()
+    state1 = montar_grid_inicial(track_length=3000.0)
     engine1 = RaceEngine(race_state=state1, seed=123, track_length=3000.0)
 
-    state2 = montar_grid_inicial()
+    state2 = montar_grid_inicial(track_length=3000.0)
     engine2 = RaceEngine(race_state=state2, seed=123, track_length=3000.0)
 
     for _ in range(3):
@@ -188,17 +200,17 @@ def test_engine_determinism_with_seed():
 
 
 def test_step_tick_advances_distance_and_burns_fuel(base_engine: RaceEngine):
-    """Verifica se step_tick(0.5) avança distância linear e queima combustível."""
+    """Verifica se step_tick(0.5) avança a distância total e queima combustível."""
     ver = base_engine.state.drivers["VER"]
-    initial_dist = ver.lap_distance_covered
+    initial_total = ver.total_distance_covered
     initial_fuel = ver.fuel_load
 
     base_engine.step_tick(delta_time=0.5)
 
-    assert ver.lap_distance_covered > initial_dist
+    # Em 0.5s a ~60 m/s de velocidade base, o carro avança cerca de 28-30 m.
+    deslocamento = ver.total_distance_covered - initial_total
+    assert 20.0 < deslocamento < 35.0
     assert ver.fuel_load < initial_fuel
-    # Em 0.5s a ~20m/s de velocidade base, o carro avança cerca de 9 a 11 metros
-    assert 8.0 < (ver.lap_distance_covered - initial_dist) < 15.0
 
 
 def test_step_tick_with_track_map():
@@ -218,7 +230,7 @@ def test_step_tick_with_track_map():
 
 def test_step_tick_triggers_pit_stop_heuristic():
     """Simula piloto com pneus degradados na janela de pit e confirma acionamento de parada."""
-    state = montar_grid_inicial()
+    state = montar_grid_inicial(track_length=4000.0)
     engine = RaceEngine(race_state=state, track_length=4000.0, seed=42)
 
     ver = state.drivers["VER"]
@@ -247,7 +259,7 @@ def test_engine_async_run_and_broadcast():
             if envelope.get("type") == "lap_update":
                 emitted_laps.append(envelope["current_lap"])
 
-        state = montar_grid_inicial()
+        state = montar_grid_inicial(track_length=2000.0)
         state.total_laps = 3  # Corrida curta com 3 voltas
 
         engine = RaceEngine(
@@ -280,7 +292,7 @@ def test_realtime_loop_helper():
             if env.get("type") == "lap_update":
                 emitted.append(env["current_lap"])
 
-        state = montar_grid_inicial()
+        state = montar_grid_inicial(track_length=2000.0)
         state.total_laps = 2
 
         engine = await run_realtime_loop(
@@ -482,7 +494,7 @@ def test_heuristic_weather_normalization(weather: str, esperado: str):
 
 def test_evaluate_pit_stops_feed_weather_and_rival_context(monkeypatch):
     """Os adaptadores entregam clima e contexto do rival sem tocar nos dataclasses."""
-    state = montar_grid_inicial(grid=["VER", "NOR", "LEC"])
+    state = montar_grid_inicial(grid=["VER", "NOR", "LEC"], track_length=4000.0)
     engine = RaceEngine(
         race_state=state,
         weather="DAMP",
@@ -549,7 +561,7 @@ def test_race_adapter_marks_safety_car_only_for_full_sc():
 
 def test_clima_molhado_dispara_troca_para_pneu_de_chuva():
     """Com pista molhada, a prioridade WEATHER da heurística passa a valer."""
-    state = montar_grid_inicial(grid=["VER", "NOR"])
+    state = montar_grid_inicial(grid=["VER", "NOR"], track_length=4000.0)
     engine = RaceEngine(
         race_state=state,
         weather="WET",
@@ -588,7 +600,7 @@ def test_strategy_degradation_curve_maps_rain_compounds():
 
 def test_clima_molhado_com_pneu_de_chuva_nao_quebra_heuristica():
     """Pneu de chuva já montado não deve estourar a projeção de degradação."""
-    state = montar_grid_inicial(grid=["VER", "NOR"])
+    state = montar_grid_inicial(grid=["VER", "NOR"], track_length=4000.0)
     engine = RaceEngine(
         race_state=state,
         weather="WET",

@@ -342,6 +342,19 @@ motor são derivados do relógio. O evento `OVERTAKE` é emitido no Contrato D2 
 `zone_id`, gap e delta de ritmo. As constantes são módulo-level para permitir a
 calibração prevista no M4.
 
+#### Grid de largada e bloqueio físico
+
+O grid é montado atrás da linha de chegada com `GRID_SPACING_M = 8.0` por posição
+(`montar_grid_inicial(..., track_length=...)`, sempre com o comprimento real do
+circuito). O primeiro cruzamento da linha, com `total_distance_covered < 0`, é a
+largada: inicia a contagem da volta 1 sem registrar `LapResult` nem envelhecer pneu.
+
+No `tick()`, cobrir mais metros não basta para ultrapassar. Os carros ativos e fora do
+pit são ordenados por distância total e cada um tem o passo limitado a
+`MIN_CAR_GAP_M = 10.0` atrás do rival da frente; a ordem só muda pelo
+`sample_overtake()`, que também aplica `OVERTAKE_DEFENDER_COOLDOWN_S = 3.0` ao
+defensor. Carros no pit (faixa separada) e já finalizados não participam da corrente.
+
 ---
 
 ## 5. Marcos e Critérios de Aceite

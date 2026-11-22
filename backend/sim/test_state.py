@@ -442,7 +442,7 @@ def test_physics_fuel_load_effect_and_burning():
             "HEAVY": _make_driver(
                 "HEAVY",
                 name="Heavy Car",
-                position=1,
+                position=2,
                 base_velocity=50.0,
                 tyre_compound=TyreCompound.MEDIUM,
                 tyre_age=5,
@@ -451,7 +451,7 @@ def test_physics_fuel_load_effect_and_burning():
             "LIGHT": _make_driver(
                 "LIGHT",
                 name="Light Car",
-                position=2,
+                position=1,
                 base_velocity=50.0,
                 tyre_compound=TyreCompound.MEDIUM,
                 tyre_age=5,
@@ -467,3 +467,44 @@ def test_physics_fuel_load_effect_and_burning():
     assert state.drivers["HEAVY"].fuel_load < initial_heavy_fuel, (
         "Combustível deve diminuir com a distância"
     )
+
+
+def test_carro_no_pit_nao_bloqueia_o_carro_de_tras():
+    """Quem está no box corre em faixa separada e não entra no bloqueio."""
+    state = RaceState(
+        current_lap=1,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "PIT": _make_driver("PIT", position=1, base_velocity=50.0),
+            "TRACK": _make_driver("TRACK", position=2, base_velocity=50.0),
+        },
+    )
+    state.drivers["PIT"].pit_status = PitStatus.IN_PIT
+    state.drivers["PIT"].pit_time_remaining = 10.0
+
+    tick(state, delta_time=2.0, track_length=4000.0)
+
+    assert (
+        state.drivers["TRACK"].total_distance_covered > state.drivers["PIT"].total_distance_covered
+    )
+
+
+def test_carro_finalizado_nao_bloqueia_quem_ainda_corre():
+    """Após a bandeirada, o carro já finalizado não segura os demais."""
+    state = RaceState(
+        current_lap=1,
+        total_laps=1,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "FINISHED": _make_driver("FINISHED", position=1, base_velocity=50.0),
+            "RUNNING": _make_driver("RUNNING", position=2, base_velocity=50.0),
+        },
+    )
+    state.drivers["FINISHED"].current_lap = 1
+
+    tick(state, delta_time=2.0, track_length=4000.0)
+
+    assert state.drivers["RUNNING"].total_distance_covered > 0.0

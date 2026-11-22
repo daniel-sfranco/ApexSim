@@ -124,7 +124,7 @@ class RaceEngine:
         elif self.base_lap_delay < 1.0:
             self.base_tick_delay = 0.0
         else:
-            self.base_tick_delay = 0.4
+            self.base_tick_delay = 0.04
         self.broadcast_fn = broadcast_fn
         self.track_map = track_map
 
@@ -572,7 +572,7 @@ class RaceEngine:
 
         lider = ativos[0]
         gaps = SafetyCarStateMachine.compress_gaps([d.position for d in ativos])
-        v_ref = self.track_length / max(1.0, lider.base_velocity)
+        v_ref = max(1.0, lider.base_velocity)
 
         for (gap_lider, _gap_ahead), driver in zip(gaps[1:], ativos[1:], strict=True):
             if driver.current_lap != lider.current_lap:

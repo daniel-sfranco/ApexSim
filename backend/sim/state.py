@@ -154,6 +154,12 @@ class RaceState:
 # CONTRATO DO MOTOR: tick() com Física M3
 # ---------------------------------------------------------------------------
 
+# Distância mínima (m) mantida entre dois carros na mesma linha de corrida.
+# O tick não deixa ninguém ultrapassar o carro da frente apenas por cobrir mais
+# metros: o piloto fica preso atrás até `sample_overtake()` sortear a passagem
+# em uma zona válida (e aplicar o cooldown do defensor).
+MIN_CAR_GAP_M = 10.0
+
 
 def tick(
     state: RaceState,
@@ -175,6 +181,15 @@ def tick(
     - Efeito aerodinâmico de ar sujo para carros colados (< 3.0s).
     - Ativação de DRS em zonas do TrackMap quando elegível (< 1.0s).
     - Limitação de velocidade e tempo de parada em pit stop.
+
+    O deslocamento também respeita a ordem física: um piloto não ultrapassa o
+    carro da frente apenas por cobrir mais metros no tick. Ele fica preso atrás
+    a `MIN_CAR_GAP_M` até `sample_overtake()` sortear a passagem em uma zona
+    válida. Carros no pit não participam desse bloqueio (faixa separada).
+
+    Quando o grid começa atrás da linha de chegada (`total_distance_covered`
+    negativo), o primeiro cruzamento representa a largada: ele apenas inicia a
+    contagem de tempo da volta 1, sem registrar `LapResult` nem envelhecer pneu.
 
     Args:
         state: Estado atual da corrida.
@@ -198,6 +213,11 @@ def tick(
 
     voltas_concluidas: list[tuple[DriverState, int, float]] = []
     lider_bandeirado = state.current_lap >= state.total_laps
+
+    # Primeira passada: calcula o deslocamento de cada piloto e guarda quem está
+    # efetivamente disputando posição em pista (fora do pit).
+    movimentos: dict[str, float] = {}
+    disputando: list[DriverState] = []
 
     for driver in state.drivers.values():
         if (
@@ -267,6 +287,40 @@ def tick(
 
         # 3) Deslocamento com ruído estocástico determinístico
         step_distance = max(0.0, (v_eff + rand_gauss(0, 0.4)) * tempo_movimento)
+        movimentos[driver.driver_id] = step_distance
+        if driver.pit_status == PitStatus.NONE:
+            disputando.append(driver)
+
+    # Bloqueio por distância: cobrir mais metros no tick não basta para passar.
+    # A corrente segue a ordem física (distância total) e limita cada piloto ao
+    # total do rival da frente menos o gap mínimo. Quem está no pit fica fora da
+    # corrente: o corredor dos boxes é tratado como faixa separada.
+    if track_length > 0.0 and len(disputando) > 1:
+        corrente = sorted(
+            disputando,
+            key=lambda driver: (
+                -driver.total_distance_covered,
+                driver.position,
+                driver.driver_id,
+            ),
+        )
+        total_a_frente: float | None = None
+        for driver in corrente:
+            total_atual = driver.total_distance_covered
+            novo_total = total_atual + movimentos[driver.driver_id]
+            if total_a_frente is not None:
+                limite = total_a_frente - MIN_CAR_GAP_M
+                if novo_total > limite:
+                    novo_total = max(total_atual, limite)
+            movimentos[driver.driver_id] = novo_total - total_atual
+            total_a_frente = novo_total
+
+    # Segunda passada: aplica o deslocamento efetivo, queima combustível e
+    # detecta cruzamentos de linha (inclusive a largada).
+    for driver in state.drivers.values():
+        step_distance = movimentos.get(driver.driver_id)
+        if step_distance is None:
+            continue
 
         # Consumo contínuo de combustível (~1.6 kg/volta)
         if track_length > 0:
@@ -274,6 +328,7 @@ def tick(
             driver.fuel_load = max(2.0, driver.fuel_load - fuel_burned)
 
         distancia_inicio_tick = driver.lap_distance_covered
+        total_inicio_tick = driver.total_distance_covered
         driver.lap_distance_covered += step_distance
         driver.total_distance_covered += step_distance
 
@@ -288,6 +343,12 @@ def tick(
             )
             fracao = distancia_ao_cruzamento / step_distance if step_distance > 0 else 1.0
             instante_cruzamento = state.elapsed_time - delta_time + fracao * delta_time
+
+            # Grid atrás da linha: o primeiro cruzamento (vindo de distância
+            # total negativa) é a largada, não uma volta concluída.
+            if driver.current_lap == 0 and driver.lap_time_sum == 0.0 and total_inicio_tick < 0.0:
+                driver.lap_time_sum = instante_cruzamento
+                continue
 
             lap_time = instante_cruzamento - driver.lap_time_sum
             driver.lap_time_sum += lap_time

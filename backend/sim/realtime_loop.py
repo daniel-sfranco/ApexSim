@@ -29,7 +29,8 @@ async def run_realtime_loop(
 ) -> RaceEngine:
     """Instancia e executa o motor de corrida em segundo plano ou até o fim."""
     if race_state is None:
-        race_state = montar_grid_inicial()
+        comprimento = track_map.length_m if track_map is not None else track_length
+        race_state = montar_grid_inicial(track_length=comprimento)
 
     engine = RaceEngine(
         race_state=race_state,

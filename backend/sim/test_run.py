@@ -13,7 +13,15 @@ import random
 import pytest
 
 from sim.run import montar_grid_inicial
-from sim.state import DriverState, PitStatus, RaceState, TrackStatus, TyreCompound, tick
+from sim.state import (
+    MIN_CAR_GAP_M,
+    DriverState,
+    PitStatus,
+    RaceState,
+    TrackStatus,
+    TyreCompound,
+    tick,
+)
 
 # ---------------------------------------------------------------------------
 # HELPERS
@@ -64,7 +72,7 @@ def estado_com(pilotos: list[DriverState], total_laps: int = 58) -> RaceState:
 
 
 def test_lider_fica_em_primeiro_com_maior_velocidade(monkeypatch):
-    """Sem ruído aleatório, quem tem maior velocidade base cobre maior distância e fica em P1."""
+    """Quem já está à frente e é mais rápido se mantém em P1."""
     monkeypatch.setattr(random, "gauss", lambda mu, sigma: 0.0)
     estado = estado_com(
         [
@@ -73,6 +81,9 @@ def test_lider_fica_em_primeiro_com_maior_velocidade(monkeypatch):
             piloto("C", base_velocity=18.0),
         ]
     )
+    # B larga à frente; o tick não permite ultrapassagem apenas por distância.
+    estado.drivers["B"].lap_distance_covered = 100.0
+    estado.drivers["B"].total_distance_covered = 100.0
 
     tick(estado, delta_time=200.0, track_length=3000.0)
 
@@ -81,31 +92,49 @@ def test_lider_fica_em_primeiro_com_maior_velocidade(monkeypatch):
     assert estado.drivers["C"].position == 3
 
 
-def test_lider_tem_gap_zero_e_gap_ahead_none(monkeypatch):
-    """O piloto em P1 deve sempre ter gap_to_leader=0 e gap_to_ahead=None."""
+def test_carro_mais_rapido_nao_ultrapassa_por_distancia(monkeypatch):
+    """Sem sample_overtake, o mais rápido fica preso atrás do carro da frente."""
     monkeypatch.setattr(random, "gauss", lambda mu, sigma: 0.0)
-    estado = estado_com([piloto("A", 20.0), piloto("B", 25.0)])
+    estado = estado_com(
+        [
+            piloto("A", base_velocity=20.0, position=1),
+            piloto("B", base_velocity=25.0, position=2),  # mais rápido, mas atrás
+        ]
+    )
 
     tick(estado, delta_time=200.0, track_length=3000.0)
 
-    lider = estado.drivers["B"]
+    assert estado.drivers["A"].position == 1
+    assert estado.drivers["B"].position == 2
+    gap = estado.drivers["A"].total_distance_covered - estado.drivers["B"].total_distance_covered
+    assert gap == pytest.approx(MIN_CAR_GAP_M)
+
+
+def test_lider_tem_gap_zero_e_gap_ahead_none(monkeypatch):
+    """O piloto em P1 deve sempre ter gap_to_leader=0 e gap_to_ahead=None."""
+    monkeypatch.setattr(random, "gauss", lambda mu, sigma: 0.0)
+    estado = estado_com([piloto("A", 20.0)])
+
+    tick(estado, delta_time=200.0, track_length=3000.0)
+
+    lider = estado.drivers["A"]
     assert lider.gap_to_leader == 0.0
     assert lider.gap_to_ahead is None
 
 
 def test_current_lap_avanca_apos_cruzar_distancia_da_pista(monkeypatch):
-    """Quando os pilotos cruzam track_length, current_lap é incrementado."""
+    """Quando o piloto cruza track_length, current_lap é incrementado."""
     monkeypatch.setattr(random, "gauss", lambda mu, sigma: 0.0)
     # 20 m/s * 100s = 2000m >= 2000m -> 1 volta
-    estado = estado_com([piloto("A", 20.0), piloto("B", 20.0)])
+    estado = estado_com([piloto("A", 20.0)])
 
     tick(estado, delta_time=100.0, track_length=2000.0)
     assert estado.current_lap == 1
-    assert all(d.current_lap == 1 for d in estado.drivers.values())
+    assert estado.drivers["A"].current_lap == 1
 
     tick(estado, delta_time=100.0, track_length=2000.0)
     assert estado.current_lap == 2
-    assert all(d.current_lap == 2 for d in estado.drivers.values())
+    assert estado.drivers["A"].current_lap == 2
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +144,7 @@ def test_current_lap_avanca_apos_cruzar_distancia_da_pista(monkeypatch):
 
 def _rodar_simulacao(seed: int) -> list[tuple[str, int, float]]:
     random.seed(seed)
-    estado = montar_grid_inicial()
+    estado = montar_grid_inicial(track_length=3337.0)
     for _ in range(10):
         tick(estado, delta_time=20.0, track_length=3337.0)
     return sorted(
@@ -148,11 +177,11 @@ def test_seeds_diferentes_tendem_a_produzir_corridas_diferentes():
 def test_tick_registra_lap_result_no_historico(monkeypatch):
     """Ao cruzar a linha, gera um LapResult por piloto e anexa em lap_history."""
     monkeypatch.setattr(random, "gauss", lambda mu, sigma: 0.0)
-    estado = estado_com([piloto("A", 20.0), piloto("B", 20.0)])
+    estado = estado_com([piloto("A", 20.0)])
 
     tick(estado, delta_time=100.0, track_length=2000.0)
 
-    assert len(estado.lap_history) == 2
+    assert len(estado.lap_history) == 1
 
 
 def test_lap_result_reflete_os_dados_corretos_do_piloto(monkeypatch):
@@ -206,3 +235,44 @@ def test_montar_grid_inicial_sem_argumentos_mantem_grid_padrao():
 
     assert len(estado.drivers) == 20
     assert all(d.tyre_compound is TyreCompound.MEDIUM for d in estado.drivers.values())
+
+
+def test_montar_grid_inicial_separa_fisicamente_os_carros():
+    """O grid fica atrás da linha, com 8 m entre posições consecutivas."""
+    estado = montar_grid_inicial(grid=["NOR", "VER", "COL"], track_length=4000.0)
+
+    nor = estado.drivers["NOR"]
+    ver = estado.drivers["VER"]
+    col = estado.drivers["COL"]
+
+    assert nor.lap_distance_covered == pytest.approx(4000.0 - 8.0)
+    assert ver.lap_distance_covered == pytest.approx(4000.0 - 16.0)
+    assert col.lap_distance_covered == pytest.approx(4000.0 - 24.0)
+    assert nor.total_distance_covered == pytest.approx(-8.0)
+    assert ver.total_distance_covered == pytest.approx(-16.0)
+    assert col.total_distance_covered == pytest.approx(-24.0)
+    assert ver.gap_to_ahead == pytest.approx(8.0 / 60.0)
+    assert nor.gap_to_leader == 0.0
+    assert ver.gap_to_leader == pytest.approx(8.0 / 60.0)
+
+
+def test_primeiro_cruzamento_da_grid_e_a_largada(monkeypatch):
+    """O primeiro cruzamento vindo de trás da linha inicia a volta 1 sem contá-la."""
+    monkeypatch.setattr(random, "gauss", lambda mu, sigma: 0.0)
+    estado = montar_grid_inicial(grid=["A", "B"], track_length=2000.0)
+
+    tick(estado, delta_time=1.0, track_length=2000.0)
+
+    a = estado.drivers["A"]
+    assert a.current_lap == 0
+    assert a.lap_time_sum > 0.0
+    assert a.last_lap_time is None
+    assert a.tyre_age == 0
+    assert estado.lap_history == []
+
+    tick(estado, delta_time=40.0, track_length=2000.0)
+
+    assert a.current_lap == 1
+    assert a.tyre_age == 1
+    assert a.last_lap_time is not None
+    assert len(estado.lap_history) == 2
