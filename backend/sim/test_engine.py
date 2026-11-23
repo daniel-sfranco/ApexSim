@@ -282,6 +282,61 @@ def test_engine_async_run_and_broadcast():
     asyncio.run(_run_test())
 
 
+def test_ganchos_de_fim_de_volta_entregam_o_historico_uma_vez_por_volta():
+    """`on_lap_closed` recebe cada `LapResult` exatamente uma vez, em lotes por volta."""
+
+    async def _run_test() -> None:
+        lotes: list[tuple[list[Any], list[dict[str, Any]]]] = []
+        terminou: list[bool] = []
+
+        async def on_lap_closed(voltas: list[Any], eventos: list[dict[str, Any]]) -> None:
+            lotes.append((voltas, eventos))
+
+        async def on_finished() -> None:
+            terminou.append(True)
+
+        state = montar_grid_inicial()
+        state.total_laps = 3
+        engine = RaceEngine(
+            race_state=state,
+            track_map=TrackMap.load("interlagos"),
+            seed=7,
+            base_tick_delay=0.0,
+            on_lap_closed=on_lap_closed,
+            on_finished=on_finished,
+        )
+
+        await engine.run()
+
+        entregues = [volta for voltas, _ in lotes for volta in voltas]
+        assert entregues == engine.state.lap_history  # nada perdido, nada repetido
+        # Um lote por volta do líder (mais o fechamento final), nunca um por tick.
+        assert len(lotes) <= state.total_laps + 1
+        assert terminou == [True]
+        # Todo evento emitido também foi entregue (nenhum ficou para trás no fim).
+        assert engine._events_since_lap_closed == []
+
+    asyncio.run(_run_test())
+
+
+def test_motor_parado_nao_chama_on_finished():
+    async def _run_test() -> None:
+        chamadas: list[str] = []
+
+        async def on_finished() -> None:
+            chamadas.append("finished")
+
+        state = montar_grid_inicial()
+        state.total_laps = 50
+        engine = RaceEngine(race_state=state, base_tick_delay=0.0, on_finished=on_finished)
+        engine.stop()
+        await engine.run()
+
+        assert chamadas == []
+
+    asyncio.run(_run_test())
+
+
 def test_realtime_loop_helper():
     """Valida o utilitário run_realtime_loop."""
 
