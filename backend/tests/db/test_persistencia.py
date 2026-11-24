@@ -18,6 +18,7 @@ from db.repositorio import (
     criar_corrida,
     gravar_eventos,
     gravar_voltas,
+    limpar_historico,
     mapa_entradas,
     registrar_abandono,
 )
@@ -179,11 +180,42 @@ def test_largar_a_corrida_nao_grava_finished_at(session, corrida):
     assert corrida.status == "running" and corrida.finished_at is None
 
 
+def test_voltar_a_rodar_apaga_o_finished_at_anterior(session, corrida):
+    atualizar_status(session, corrida.id, "finished")
+    atualizar_status(session, corrida.id, "running")
+
+    session.refresh(corrida)
+    assert corrida.status == "running" and corrida.finished_at is None
+
+
 def test_status_invalido_e_corrida_inexistente_falham_alto(session, corrida):
     with pytest.raises(ValueError, match="pausada"):
         atualizar_status(session, corrida.id, "pausada")
     with pytest.raises(CorridaNaoEncontrada):
         atualizar_status(session, uuid.uuid4(), "running")
+
+
+# --- reinício da mesma corrida --------------------------------------------------
+
+
+def test_limpar_historico_apaga_voltas_e_eventos_so_desta_corrida(session, corrida, mapa):
+    outra = criar_corrida(
+        session, circuit_id="monza", seed=1, total_laps=10, config={},
+        grid=[InscricaoNoGrid("VER", 1)],
+    )  # fmt: skip
+    mapa_outra = mapa_entradas(session, outra.id)
+    gravar_voltas(session, mapa, [_volta(c) for c in CODIGOS])
+    gravar_eventos(session, corrida.id, mapa, [EventoDeCorrida(1, "SAFETY_CAR_DEPLOYED")])
+    gravar_voltas(session, mapa_outra, [_volta("VER")])
+    gravar_eventos(session, outra.id, mapa_outra, [EventoDeCorrida(1, "OVERTAKE", "VER")])
+
+    limpar_historico(session, corrida.id)
+
+    assert _contar(session, LapRecord) == 1  # só a volta da outra corrida
+    assert _contar(session, RaceEvent) == 1
+    # O grid continua lá: dá para gravar a volta 1 de novo sem colidir na unicidade.
+    gravar_voltas(session, mapa, [_volta(c) for c in CODIGOS])
+    assert _contar(session, LapRecord) == 1 + len(CODIGOS)
 
 
 # --- leitura para o motor -------------------------------------------------------

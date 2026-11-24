@@ -41,7 +41,9 @@ class TyreParams:
 
     k1_quad: float  # s/volta^2 - calibrado no Kaggle 2023-2024 (D5)
     k2_lin: float  # s/volta   - degradacao linear calibrada no Kaggle 2023-2024 (D5)
-    cliff_age: float  # voltas   - idade do cliff (hipotese sem dado, acima da faixa medida)
+    cliff_age: (
+        float  # voltas   - idade do cliff (hipotese sem dado, acima da faixa medida)
+    )
     cliff_delta: float  # s      - magnitude do salto no cliff (hipotese sem dado)
     cliff_beta: float  # 1/volta - inclinacao da transicao logistica (hipotese sem dado)
 
@@ -56,10 +58,18 @@ class TyreParams:
 # aderencia ao IC 95% medido em toda a regiao observada.
 TYRE_TABLE: dict[Compound, TyreParams] = {
     "soft": TyreParams(
-        k1_quad=0.002412, k2_lin=0.008639, cliff_age=25.0, cliff_delta=1.2, cliff_beta=0.9
+        k1_quad=0.002412,
+        k2_lin=0.008639,
+        cliff_age=25.0,
+        cliff_delta=1.2,
+        cliff_beta=0.9,
     ),
     "medium": TyreParams(
-        k1_quad=0.000847, k2_lin=0.015558, cliff_age=35.0, cliff_delta=0.8, cliff_beta=0.7
+        k1_quad=0.000847,
+        k2_lin=0.015558,
+        cliff_age=35.0,
+        cliff_delta=0.8,
+        cliff_beta=0.7,
     ),
     "hard": TyreParams(
         k1_quad=0.0, k2_lin=0.051181, cliff_age=47.0, cliff_delta=0.5, cliff_beta=0.5
@@ -88,7 +98,9 @@ def _temp_penalty(track_temp: float) -> float:
     return 0.0
 
 
-def tyre_time_loss(compound: Compound, age_laps: int, track_temp: float = 35.0) -> float:
+def tyre_time_loss(
+    compound: Compound, age_laps: int, track_temp: float = 35.0
+) -> float:
     """Perda de tempo (s) em relacao ao pneu novo, na temperatura ideal.
 
     Equacao (docs/fisica.md Sec. 1.1):
@@ -190,7 +202,9 @@ def dirty_air_grip_factor(gap_ahead_s: float | None) -> float:
         raise ValueError("gap_ahead_s deve ser >= 0")
     if gap_ahead_s > DIRTY_AIR_CUTOFF_S:
         return 1.0
-    return 1.0 - DIRTY_AIR_MAX_DOWNFORCE_LOSS * math.exp(-gap_ahead_s / DIRTY_AIR_DECAY_S)
+    return 1.0 - DIRTY_AIR_MAX_DOWNFORCE_LOSS * math.exp(
+        -gap_ahead_s / DIRTY_AIR_DECAY_S
+    )
 
 
 # ---------------------------------------------------------------------
@@ -253,5 +267,7 @@ def drs_lap_time_gain(
     if not has_detection:
         return 0.0
 
-    total_drs_length_m = sum(z.length_m for z in track_map.zones if z.type == "drs_activation")
+    total_drs_length_m = sum(
+        z.length_m for z in track_map.zones if z.type == "drs_activation"
+    )
     return drs_zone_time_gain(total_drs_length_m, eligible=True)

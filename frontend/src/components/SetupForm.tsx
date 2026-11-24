@@ -92,11 +92,13 @@ export const SetupForm: React.FC = () => {
     reorderGrid(grid);
     resetRace();
 
-    // Tentar criar corrida no backend se disponível
-    const raceId = "race-" + Math.random().toString(36).substring(2, 9);
+    // Cria a corrida no backend e usa o `race_id` devolvido: é ele que permite ao
+    // WebSocket carregar circuito, voltas e clima gravados pela API. Se a API
+    // estiver indisponível, cai no modo memória com um id local.
+    let raceId = "race-" + Math.random().toString(36).substring(2, 9);
     try {
       const apiUrl = (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
-      await fetch(`${apiUrl}/api/races`, {
+      const resposta = await fetch(`${apiUrl}/api/races`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -106,10 +108,24 @@ export const SetupForm: React.FC = () => {
           weather,
           track_temp: trackTemp,
           grid,
+          // Apenas pilotos presentes no grid, como exige o contrato da API.
+          initial_tyres: Object.fromEntries(
+            Object.entries(startingTyres).filter(([code]) => grid.includes(code))
+          ),
         }),
-      }).catch(() => null);
-    } catch {
-      // Fallback gracioso
+      });
+      if (resposta.ok) {
+        const dados = await resposta.json();
+        if (typeof dados?.race_id === "string" && dados.race_id) {
+          raceId = dados.race_id;
+        }
+      } else {
+        console.warn(
+          `[SetupForm] POST /api/races falhou (${resposta.status}); usando corrida em memória`
+        );
+      }
+    } catch (erro) {
+      console.warn("[SetupForm] API indisponível; usando corrida em memória", erro);
     }
 
     navigate(`/race/${raceId}`);

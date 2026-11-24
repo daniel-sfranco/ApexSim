@@ -30,10 +30,10 @@ Este documento centraliza todos os entregáveis e requisitos de código, arquite
   - [x] Suporte e tratamento dos comandos `play`, `pause` e `set_speed` recebidos do cliente.
 
 ### M3 — Corrida Realista (Semanas 7–10)
-- [ ] **Integração de Física e Regras de Corrida**:
-  - [ ] Substituição dos tempos de volta constantes pelas funções de física (degradação de pneu, peso de combustível e ar sujo).
-  - [ ] Modelo probabilístico de ultrapassagem baseado em diferencial de ritmo, uso de DRS e dificuldade do circuito (`track_map`).
-  - [ ] Aplicação mecânica da perda de tempo no pit lane (`time_loss_s`) e atualização do composto do pneu ao receber ordem de pit stop.
+- [x] **Integração de Física e Regras de Corrida**:
+  - [x] Substituição dos tempos de volta constantes pelas funções de física (degradação de pneu, peso de combustível e ar sujo).
+  - [x] Modelo probabilístico de ultrapassagem baseado em diferencial de ritmo, uso de DRS e dificuldade do circuito (`track_map`).
+  - [x] Aplicação mecânica da perda de tempo no pit lane (`time_loss_s`) e atualização do composto do pneu ao receber ordem de pit stop.
 
 ### M4 — Feature Complete / Calibração (Semanas 11–13)
 - [ ] **Relatório e Processo de Calibração (`docs/calibracao.md`)**:
