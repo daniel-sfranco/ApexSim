@@ -77,9 +77,6 @@ OVERTAKE_DIFFICULTY_WEIGHTS: dict[str, float] = {
     "alta": 0.5,
 }
 
-# Teto da probabilidade acumulada em uma travessia de zona.
-OVERTAKE_MAX_ZONE_PROBABILITY = 0.90
-
 # Cooldown (s) para o atacante não emendar ultrapassagens e para o defensor
 # não repassar imediatamente (efeito ping-pong).
 OVERTAKE_ATTACKER_COOLDOWN_S = 4.0
@@ -239,6 +236,10 @@ def _swap_track_position(attacker: DriverState, defender: DriverState) -> None:
         defender.lap_time_sum,
         attacker.lap_time_sum,
     )
+    attacker.position, defender.position = (
+        defender.position,
+        attacker.position,
+    )
 
 
 def sample_overtake(
@@ -275,6 +276,8 @@ def sample_overtake(
             continue
         if attacker.current_lap < OVERTAKE_MIN_LAP:
             continue
+        if attacker.current_lap >= state.total_laps or defender.current_lap >= state.total_laps:
+            continue
         if attacker.current_lap != defender.current_lap:
             continue
 
@@ -306,6 +309,7 @@ def sample_overtake(
             continue
 
         _swap_track_position(attacker, defender)
+        ordenados[idx], ordenados[idx - 1] = ordenados[idx - 1], ordenados[idx]
         defender.overtake_cooldown_s = OVERTAKE_DEFENDER_COOLDOWN_S
         resultados.append(
             OvertakeResult(

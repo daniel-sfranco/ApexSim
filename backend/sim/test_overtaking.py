@@ -189,3 +189,37 @@ def test_sample_overtake_is_deterministic(mapa: TrackMap):
     res_b = sample_overtake(_duelo(), mapa, random.Random(7))
 
     assert [r.attacker_id for r in res_a] == [r.attacker_id for r in res_b]
+
+
+def test_sample_overtake_chain_in_single_tick_does_not_skip_p1(mapa: TrackMap):
+    """P2 passa P1 e P3 passa P2 (novo P2) sem pular posições nem teletransportar."""
+    state = montar_grid_inicial(grid=["VER", "PER", "HAM"])
+    state.total_laps = 50
+    state.current_lap = 10
+    for driver in state.drivers.values():
+        driver.current_lap = 10
+        driver.gap_to_ahead = 0.3
+    ver = state.drivers["VER"]
+    per = state.drivers["PER"]
+    ham = state.drivers["HAM"]
+    ver.lap_distance_covered = 2000.0
+    per.lap_distance_covered = 1980.0
+    ham.lap_distance_covered = 1960.0
+    ver.total_distance_covered = 42000.0
+    per.total_distance_covered = 41980.0
+    ham.total_distance_covered = 41960.0
+
+    resultados = sample_overtake(state, mapa, _AlwaysPass())
+    assert len(resultados) >= 1
+    assert resultados[0].attacker_id == "PER"
+    assert resultados[0].defender_id == "VER"
+    if len(resultados) > 1:
+        assert resultados[1].attacker_id == "HAM"
+        assert resultados[1].defender_id == "VER"
+
+
+def test_sample_overtake_gate_finished_race(duelo: RaceState, mapa: TrackMap):
+    """Pilotos que já receberam a bandeirada não ultrapassam nem são ultrapassados."""
+    duelo.drivers["VER"].current_lap = duelo.total_laps
+    duelo.drivers["NOR"].current_lap = duelo.total_laps
+    assert sample_overtake(duelo, mapa, _AlwaysPass()) == []

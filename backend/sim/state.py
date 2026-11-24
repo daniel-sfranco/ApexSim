@@ -130,6 +130,7 @@ class DriverState:
     pit_stop_in_this_lap: bool = False  # Sinaliza pit stop na volta atual
     pit_time_in_this_lap: float | None = None  # Duração total da passagem no pit
     overtake_cooldown_s: float = 0.0  # Impede ultrapassagens em sequência (s)
+    incident_time_remaining: float = 0.0  # Tempo restante imobilizado/em recuperação de incidente (s)
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +148,7 @@ class RaceState:
     drivers: dict[str, DriverState]
     elapsed_time: float
     lap_history: list[LapResult] = field(default_factory=list)
+    cumulative_lap_times: dict[str, dict[int, float]] = field(default_factory=dict)
     is_finished: bool = False
 
 
@@ -158,7 +160,7 @@ class RaceState:
 # O tick não deixa ninguém ultrapassar o carro da frente apenas por cobrir mais
 # metros: o piloto fica preso atrás até `sample_overtake()` sortear a passagem
 # em uma zona válida (e aplicar o cooldown do defensor).
-MIN_CAR_GAP_M = 10.0
+MIN_CAR_GAP_M = 8.0
 
 
 def tick(
@@ -227,7 +229,7 @@ def tick(
         ):
             continue
 
-        # 1) Gestão de Pit Stop em andamento
+        # 1) Gestão de Pit Stop e Incidentes em andamento
         tempo_movimento = delta_time
         if driver.pit_time_remaining > 0.0:
             tempo_parado = min(delta_time, driver.pit_time_remaining)
@@ -235,6 +237,10 @@ def tick(
             tempo_movimento = delta_time - tempo_parado
             if driver.pit_time_remaining <= 0.0:
                 driver.pit_status = PitStatus.NONE
+        elif driver.incident_time_remaining > 0.0:
+            tempo_parado = min(delta_time, driver.incident_time_remaining)
+            driver.incident_time_remaining -= tempo_parado
+            tempo_movimento = delta_time - tempo_parado
 
         # 2) Cálculo de velocidade efetiva com modelo de física M3
         if use_physics:
@@ -288,7 +294,7 @@ def tick(
         # 3) Deslocamento com ruído estocástico determinístico
         step_distance = max(0.0, (v_eff + rand_gauss(0, 0.4)) * tempo_movimento)
         movimentos[driver.driver_id] = step_distance
-        if driver.pit_status == PitStatus.NONE:
+        if driver.pit_status == PitStatus.NONE and driver.incident_time_remaining <= 0.0:
             disputando.append(driver)
 
     # Bloqueio por distância: cobrir mais metros no tick não basta para passar.
@@ -372,18 +378,18 @@ def tick(
 
     ativos = [driver for driver in ordenados if not driver.is_retired]
 
-    # 6) Cálculo de Gaps para líder e carro à frente
-    cumulado_historico: dict[str, dict[int, float]] = {}
-    for registro in state.lap_history:
-        por_volta = cumulado_historico.setdefault(registro.driver_id, {})
-        por_volta[registro.lap_number] = (
-            por_volta.get(registro.lap_number - 1, 0.0) + registro.lap_time
-        )
+    # 6) Cálculo de Gaps para líder e carro à frente (O(1) via cumulative_lap_times)
+    if not state.cumulative_lap_times and state.lap_history:
+        for registro in state.lap_history:
+            por_volta = state.cumulative_lap_times.setdefault(registro.driver_id, {})
+            por_volta[registro.lap_number] = (
+                por_volta.get(registro.lap_number - 1, 0.0) + registro.lap_time
+            )
 
     def tempo_total_ate(outro: DriverState, n_volta: int) -> float:
         if n_volta >= outro.current_lap:
             return outro.lap_time_sum
-        return cumulado_historico.get(outro.driver_id, {}).get(n_volta, 0.0)
+        return state.cumulative_lap_times.get(outro.driver_id, {}).get(n_volta, 0.0)
 
     for posicao, driver in enumerate(ativos, start=1):
         if posicao == 1:
@@ -412,6 +418,9 @@ def tick(
         pit_time = driver.pit_time_in_this_lap
         driver.pit_stop_in_this_lap = False
         driver.pit_time_in_this_lap = None
+
+        por_volta = state.cumulative_lap_times.setdefault(driver.driver_id, {})
+        por_volta[lap_number] = por_volta.get(lap_number - 1, 0.0) + lap_time
 
         state.lap_history.append(
             LapResult(
@@ -455,24 +464,34 @@ def format_lap_update(
 ) -> dict:
     """Gera o envelope formal de telemetria `lap_update` (Contrato D2)."""
     drivers_ordenados = sorted(state.drivers.values(), key=lambda d: d.position)
+    # Na volta 1 (ninguém completou uma volta ainda) não existe referência de
+    # tempo de volta: o stagger físico do grid não deve aparecer como gap. O P1
+    # continua identificado como líder; os demais exibem "-" (formatGap(0)).
+    primeira_volta = state.current_lap == 0
     drivers_list = []
-    for d in drivers_ordenados:
+    for posicao, d in enumerate(drivers_ordenados, start=1):
         compound_str = (
             d.tyre_compound.name
             if isinstance(d.tyre_compound, TyreCompound)
             else str(d.tyre_compound)
         )
         pit_str = d.pit_status.name if isinstance(d.pit_status, PitStatus) else str(d.pit_status)
+        if primeira_volta:
+            gap_to_leader = 0.0
+            gap_to_ahead = None if posicao == 1 else 0.0
+        else:
+            gap_to_leader = round(float(d.gap_to_leader), 3)
+            gap_to_ahead = (
+                round(float(d.gap_to_ahead), 3) if d.gap_to_ahead is not None else None
+            )
         drivers_list.append(
             {
                 "driver_id": d.driver_id,
                 "name": d.name,
                 "team": d.team,
                 "position": int(d.position),
-                "gap_to_leader": round(float(d.gap_to_leader), 3),
-                "gap_to_ahead": (
-                    round(float(d.gap_to_ahead), 3) if d.gap_to_ahead is not None else None
-                ),
+                "gap_to_leader": gap_to_leader,
+                "gap_to_ahead": gap_to_ahead,
                 "last_lap_time": (
                     round(float(d.last_lap_time), 3) if d.last_lap_time is not None else None
                 ),

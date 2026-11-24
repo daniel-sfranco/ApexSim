@@ -40,9 +40,8 @@ PILOTOS_POR_CODIGO: dict[str, tuple[str, str]] = {
     driver_id: (name, team) for driver_id, name, team in GRID_20_PILOTOS
 }
 
-# Separação física entre dois slots consecutivos do grid (metros). O gap em
-# segundos usado no Contrato D2 é derivado da velocidade de referência dos
-# carros (8 m / 60 m/s ≈ 0,133 s).
+# Separação física entre dois slots consecutivos do grid (metros). Igual ao
+# MIN_CAR_GAP_M (8.0 m) para não provocar bloqueio artificial na largada.
 GRID_SPACING_M = 8.0
 GRID_REFERENCE_VELOCITY_MS = 60.0
 GRID_GAP_S = GRID_SPACING_M / GRID_REFERENCE_VELOCITY_MS
@@ -73,7 +72,11 @@ def montar_grid_inicial(
     """
     if grid:
         pilotos = []
+        vistos: set[str] = set()
         for driver_id in grid:
+            if driver_id in vistos:
+                continue
+            vistos.add(driver_id)
             name, team = PILOTOS_POR_CODIGO.get(driver_id, (driver_id, "Independent"))
             pilotos.append((driver_id, name, team))
     else:

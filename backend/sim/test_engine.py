@@ -439,14 +439,47 @@ def test_apply_incident_adds_time_loss_and_event():
     ver = engine.state.drivers["VER"]
     antes = ver.lap_time_sum
 
-    engine._apply_incident(_incidente())
+    engine._apply_incident(_incidente(time_loss_s=4.0))
 
-    assert ver.lap_time_sum == pytest.approx(antes + 4.0)
+    # A perda de tempo é aplicada fisicamente na pista, sem alterar lap_time_sum antes da hora
+    assert ver.incident_time_remaining == pytest.approx(4.0)
+    assert ver.lap_time_sum == pytest.approx(antes)
     assert ver.is_retired is False
     evento = engine.pending_events[-1]
     assert evento["event_type"] == "ACCIDENT"
     assert evento["involved_drivers"] == ["VER"]
     assert evento["zone_id"] is not None
+
+
+def test_incident_slows_down_next_lap_physically():
+    """Incidente de 4s freia o carro fisicamente e aumenta o tempo da volta."""
+    state = montar_grid_inicial(grid=["VER", "NOR"], track_length=2000.0)
+    state.total_laps = 5
+    engine = RaceEngine(race_state=state, track_length=2000.0, seed=42)
+
+    # Avança volta 1
+    engine.step_lap()
+    ver = state.drivers["VER"]
+    assert ver.current_lap == 1
+    volta_1_tempo = ver.last_lap_time
+    assert volta_1_tempo is not None
+
+    # Aplica incidente de 4s
+    engine._apply_incident(_incidente("VER", time_loss_s=4.0))
+    assert ver.incident_time_remaining == 4.0
+
+    # Avança até VER concluir a volta 2. O incidente imobiliza o carro por 4 s,
+    # então NOR pode assumir a liderança: `step_lap` para na volta do líder, que
+    # pode não ser a do VER.
+    ticks = 0
+    while ver.current_lap < 2 and ticks < 2000:
+        engine.step_tick(engine.delta_time)
+        ticks += 1
+    assert ver.current_lap == 2
+    volta_2_tempo = ver.last_lap_time
+    assert volta_2_tempo is not None
+    # A volta 2 fica física e matematicamente mais lenta que a volta 1
+    assert volta_2_tempo > volta_1_tempo + 3.0
 
 
 def test_apply_incident_retires_driver():
@@ -487,7 +520,38 @@ def test_safety_car_deployment_updates_status_and_compresses_field():
 
     ativos = sorted(state.drivers.values(), key=lambda d: d.position)
     for idx in range(1, 5):
-        assert ativos[idx].lap_time_sum - ativos[idx - 1].lap_time_sum == pytest.approx(0.5)
+        assert ativos[idx].gap_to_ahead == pytest.approx(0.5)
+
+
+def test_safety_car_compression_with_different_laps_no_negative_lap_time():
+    """Garante que compressão com pilotos em voltas diferentes não gera tempos negativos nem ignora pilotos."""
+    state = montar_grid_inicial(grid=["VER", "PER", "HAM"], track_length=2000.0)
+    state.total_laps = 10
+    engine = RaceEngine(race_state=state, track_length=2000.0, seed=42)
+
+    ver = state.drivers["VER"]
+    per = state.drivers["PER"]
+    ham = state.drivers["HAM"]
+
+    ver.current_lap = 2
+    ver.lap_distance_covered = 15.0
+    ver.total_distance_covered = 2 * 2000.0 + 15.0
+
+    per.current_lap = 1
+    per.lap_distance_covered = 1900.0
+    per.total_distance_covered = 1 * 2000.0 + 1900.0
+
+    ham.current_lap = 1
+    ham.lap_distance_covered = 1800.0
+    ham.total_distance_covered = 1 * 2000.0 + 1800.0
+
+    engine._compress_field()
+
+    assert per.gap_to_leader == pytest.approx(0.5)
+    assert ham.gap_to_leader == pytest.approx(1.0)
+    assert per.current_lap == 1
+    assert ham.current_lap == 1
+    assert per.lap_distance_covered > 1900.0
 
 
 def test_step_tick_samples_incidents_on_lap_crossing(monkeypatch):

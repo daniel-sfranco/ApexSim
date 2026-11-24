@@ -85,12 +85,13 @@ export function useRaceWebSocket(raceId?: string) {
       const { config } = useRaceStore.getState();
       if (config && ws.readyState === WebSocket.OPEN) {
         const initPayload = {
-          action: "restart",
+          action: "init",
           race_id: raceId,
           circuit_id: config.circuitId,
           total_laps: config.totalLaps,
           seed: config.seed,
           weather: config.weather,
+          track_temp: config.trackTemp,
           grid: config.grid,
           initial_strategy: config.initialStrategy,
         };
@@ -214,6 +215,9 @@ export function useRaceWebSocket(raceId?: string) {
         race_id: raceId,
         total_laps: totalLaps ?? config.totalLaps,
         circuit_id: circuitId ?? config.circuitId,
+        seed: config.seed,
+        weather: config.weather,
+        track_temp: config.trackTemp,
         grid: config.grid,
         initial_strategy: config.initialStrategy,
       });

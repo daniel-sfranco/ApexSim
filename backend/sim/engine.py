@@ -203,7 +203,11 @@ class RaceEngine:
 
     def set_speed(self, multiplier: float) -> None:
         """Ajusta o multiplicador de velocidade da simulação (0.25x a 20.0x)."""
-        clamped = max(0.25, min(20.0, float(multiplier)))
+        try:
+            val = float(multiplier)
+        except (ValueError, TypeError):
+            val = 1.0
+        clamped = max(0.25, min(20.0, val))
         self.speed_multiplier = clamped
 
     def stop(self) -> None:
@@ -415,7 +419,7 @@ class RaceEngine:
             "weather": self.heuristic_weather,
             # VSC chega como YELLOW (Contrato D2); só o SC pleno libera a parada barata.
             "safety_car": self.state.track_status == TrackStatus.SAFETY_CAR,
-            "red_flag": False,
+            "red_flag": self.state.track_status == TrackStatus.RED,
         }
 
     def _strategy_driver_state(
@@ -512,8 +516,8 @@ class RaceEngine:
         if driver is None:
             return
 
-        # Perda de tempo local (travada/escapada) empurra o relógio do piloto.
-        driver.lap_time_sum += incident.time_loss_s
+        # Perda de tempo local (travada/escapada) imobiliza/atrasa o piloto na pista.
+        driver.incident_time_remaining += incident.time_loss_s
 
         local = incident.corner_name or f"setor {incident.sector}"
         if incident.consequence == "SC":
@@ -602,18 +606,29 @@ class RaceEngine:
         gaps = SafetyCarStateMachine.compress_gaps([d.position for d in ativos])
         v_ref = max(1.0, lider.base_velocity)
 
-        for (gap_lider, _gap_ahead), driver in zip(gaps[1:], ativos[1:], strict=True):
-            if driver.current_lap != lider.current_lap:
-                continue
-
-            driver.lap_time_sum = lider.lap_time_sum + gap_lider
+        for (gap_lider, gap_ahead), driver in zip(gaps[1:], ativos[1:], strict=True):
+            driver.gap_to_leader = gap_lider
+            if gap_ahead is not None:
+                driver.gap_to_ahead = gap_ahead
 
             janela_m = gap_lider * v_ref
-            driver.total_distance_covered = lider.total_distance_covered - janela_m
-            distancia = lider.lap_distance_covered - janela_m
-            while distancia < 0.0:
-                distancia += self.track_length
-            driver.lap_distance_covered = distancia
+            if driver.current_lap == lider.current_lap:
+                if lider.lap_distance_covered >= janela_m:
+                    distancia = lider.lap_distance_covered - janela_m
+                    driver.lap_distance_covered = distancia
+                    driver.total_distance_covered = lider.total_distance_covered - janela_m
+                else:
+                    # Carro já cruzou a linha no mesmo tick; permanece à frente da linha sem wrap-around
+                    fator = gap_lider / (len(ativos) * 10.0 + 1.0)
+                    distancia = max(0.1, min(driver.lap_distance_covered, lider.lap_distance_covered * (1.0 - fator)))
+                    driver.lap_distance_covered = distancia
+                    driver.total_distance_covered = lider.current_lap * self.track_length + distancia
+            else:
+                # Caso comum: carro ainda está na volta anterior à do líder
+                target_total = max(0.0, lider.total_distance_covered - janela_m)
+                driver.total_distance_covered = target_total
+                driver.current_lap = int(target_total // self.track_length)
+                driver.lap_distance_covered = float(target_total % self.track_length)
 
     def step_lap(self) -> None:
         """Avança ticks até que a próxima volta seja concluída pelo líder (lote)."""

@@ -54,6 +54,12 @@ active_recorders: dict[str, GravadorDeCorrida] = {}
 # Gravação do status `aborted` ainda em voo. Quem recriar o motor da mesma corrida
 # espera ela terminar, senão o `aborted` poderia chegar depois do novo `running`.
 _pending_aborts: dict[str, asyncio.Task[None]] = {}
+# Corridas cujo motor já foi configurado por um `init`/`start`/`restart` do cliente
+# ou carregado do banco. Diferencia o motor "placeholder" criado na conexão (só
+# para enviar o snapshot inicial) de uma corrida realmente inicializada: o primeiro
+# `init` pode reconfigurar o placeholder, mas um `init` de espectador numa corrida
+# já inicializada apenas reenvia o snapshot.
+initialized_race_ids: set[str] = set()
 
 
 def stop_engine(race_id: str, *, abort: bool = False) -> None:
@@ -74,6 +80,7 @@ def stop_engine(race_id: str, *, abort: bool = False) -> None:
         task.cancel()
 
     engine_generations.pop(race_id, None)
+    initialized_race_ids.discard(race_id)
 
     gravador = active_recorders.pop(race_id, None)
     if gravador is not None:
@@ -225,7 +232,7 @@ async def _start_persisted_engine(race_id: str, force_new: bool) -> RaceEngine |
     config = corrida.config
     mapa = _load_track_map(corrida.circuit_id)
     comprimento = mapa.length_m if mapa is not None else 4309.0
-    return get_or_create_engine(
+    engine = get_or_create_engine(
         race_id=race_id,
         state=estado_inicial(corrida, comprimento),
         seed=corrida.seed,
@@ -234,6 +241,9 @@ async def _start_persisted_engine(race_id: str, force_new: bool) -> RaceEngine |
         circuit_id=corrida.circuit_id,
         gravador=gravador,
     )
+    # A corrida veio configurada do banco: já pode ser tratada como inicializada.
+    initialized_race_ids.add(race_id)
+    return engine
 
 
 async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
@@ -259,6 +269,17 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
                     continue
 
                 action = payload.get("action")
+                if (
+                    action == "init"
+                    and race_id in active_engines
+                    and race_id in initialized_race_ids
+                    and not active_engines[race_id].state.is_finished
+                ):
+                    # Não reinicia corrida em andamento para nova aba/espectador
+                    engine = active_engines[race_id]
+                    await websocket.send_text(json.dumps(engine.get_lap_update_envelope()))
+                    continue
+
                 persisted = None
                 if action in ("restart", "start", "init"):
                     persisted = await _start_persisted_engine(race_id, force_new=True)
@@ -295,22 +316,39 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
                         ),
                     )
                     total_laps = payload.get("total_laps") or payload.get("totalLaps")
-                    if total_laps:
-                        new_state.total_laps = int(total_laps)
+                    if total_laps is not None:
+                        try:
+                            new_state.total_laps = max(1, int(total_laps))
+                        except (ValueError, TypeError):
+                            pass
+
+                    raw_seed = payload.get("seed", 42)
+                    try:
+                        seed_val = int(raw_seed)
+                    except (ValueError, TypeError):
+                        seed_val = 42
+
+                    raw_track_temp = payload.get("track_temp") or payload.get("trackTemp")
+                    try:
+                        track_temp_val = float(raw_track_temp) if raw_track_temp is not None else 32.0
+                    except (ValueError, TypeError):
+                        track_temp_val = 32.0
 
                     engine = get_or_create_engine(
                         race_id=race_id,
                         state=new_state,
-                        seed=payload.get("seed", 42),
-                        weather=payload.get("weather", "DRY"),
+                        seed=seed_val,
+                        weather=str(payload.get("weather", "DRY")),
+                        track_temp=track_temp_val,
                         force_new=True,
                         circuit_id=circuit_id,
                     )
+                    initialized_race_ids.add(race_id)
                     await websocket.send_text(json.dumps(engine.get_lap_update_envelope()))
                 else:
                     engine.handle_command(payload)
-            except json.JSONDecodeError:
-                pass
+            except (json.JSONDecodeError, ValueError, TypeError, KeyError) as err:
+                logger.warning(f"Payload inválido ou erro no WebSocket ({race_id}): {err}")
     except WebSocketDisconnect:
         logger.info(f"Cliente WebSocket desconectado da corrida {race_id}")
     finally:
