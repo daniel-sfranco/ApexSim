@@ -618,7 +618,7 @@ class RaceEngine:
                     driver.lap_distance_covered = distancia
                     driver.total_distance_covered = lider.total_distance_covered - janela_m
                 else:
-                    # Carro já cruzou a linha no mesmo tick; permanece 
+                    # Carro já cruzou a linha no mesmo tick; permanece
                     # à frente da linha sem wrap-around
                     fator = gap_lider / (len(ativos) * 10.0 + 1.0)
                     distancia = max(
