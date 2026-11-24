@@ -11,9 +11,9 @@ from alembic import command
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.persistencia import GravadorDeCorrida
+from app.persistencia import GravadorDeCorrida, eventos_do_motor
 from db.base import criar_engine
-from db.models import LapRecord, Race, RaceEntry, RaceEvent
+from db.models import EVENTO_ABANDONO, LapRecord, Race, RaceEntry, RaceEvent
 from db.repositorio import EventoDeCorrida, InscricaoNoGrid, criar_corrida
 from db.seed import carregar_referencia, popular
 from sim.state import LapResult, TyreCompound
@@ -140,3 +140,57 @@ def test_a_gravacao_nao_trava_o_loop_do_motor(engine, race_id):
     asyncio.run(motor())
 
     assert len(batimentos) >= 1  # o loop rodou outras coisas enquanto a thread gravava
+
+
+def test_gravador_desativado_nao_grava_mais_nada(engine, race_id):
+    """Num restart o gravador antigo é desativado: uma volta atrasada dele não entra."""
+    gravador = GravadorDeCorrida(engine, race_id)
+    gravador.desativar()
+
+    asyncio.run(gravador.registrar_volta([_volta(c, 1) for c in CODIGOS]))
+    asyncio.run(gravador.mudar_status("aborted"))
+
+    assert _linhas(engine, race_id) == 0
+    with Session(engine) as s:
+        assert s.get(Race, race_id).status == "configured"
+
+
+def test_preparar_limpa_a_simulacao_anterior_e_marca_running(engine, race_id):
+    antigo = GravadorDeCorrida(engine, race_id)
+    asyncio.run(antigo.registrar_volta([_volta(c, 1) for c in CODIGOS]))
+    asyncio.run(antigo.mudar_status("finished"))
+
+    novo = GravadorDeCorrida(engine, race_id)
+    asyncio.run(novo.preparar())
+    asyncio.run(novo.registrar_volta([_volta(c, 1) for c in CODIGOS]))
+
+    assert _linhas(engine, race_id) == 4  # a volta 1 regravada, sem colidir na unicidade
+    with Session(engine) as s:
+        corrida = s.get(Race, race_id)
+        assert corrida.status == "running" and corrida.finished_at is None
+
+
+def test_status_final_desativa_o_gravador(engine, race_id):
+    gravador = GravadorDeCorrida(engine, race_id)
+
+    asyncio.run(gravador.mudar_status("finished"))
+
+    assert gravador.ativo is False
+
+
+def test_eventos_do_motor_viram_linhas_de_race_events():
+    envelopes = [
+        {"lap": 3, "event_type": "OVERTAKE", "involved_drivers": ["NOR", "VER"],
+         "zone_id": "drs_1", "description": "NOR passou VER"},
+        {"lap": 5, "event_type": "SAFETY_CAR_DEPLOYED", "involved_drivers": ["LEC"],
+         "zone_id": None, "description": "SC"},
+        {"lap": 7, "event_type": "RETIREMENT", "involved_drivers": ["LEC"],
+         "zone_id": "track:120m", "description": "abandono"},
+    ]  # fmt: skip
+
+    ultrapassagem, safety_car, abandono = eventos_do_motor(envelopes)
+
+    assert (ultrapassagem.lap_number, ultrapassagem.codigo_piloto) == (3, "NOR")  # o atacante
+    assert ultrapassagem.payload["involved_drivers"] == ["NOR", "VER"]
+    assert safety_car.codigo_piloto is None  # evento da corrida inteira
+    assert (abandono.event_type, abandono.codigo_piloto) == (EVENTO_ABANDONO, "LEC")

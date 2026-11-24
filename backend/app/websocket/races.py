@@ -5,6 +5,18 @@ Handler WebSocket para transmissão de telemetria e recepção de comandos (Cont
 Ponte de transporte entre clientes web (Cockpit / Timing Tower) e o motor `RaceEngine`.
 Gerencia conexões, despacho de mensagens `lap_update` e encaminhamento de comandos
 `play`, `pause`, `resume`, `set_speed` e `restart`.
+
+Corridas gravadas no banco
+--------------------------
+Quando o `race_id` é o UUID de uma corrida criada por `POST /api/races`, o motor é
+montado com o que está no banco (`app.corrida_persistida`) e cada volta fechada é
+gravada pelo `GravadorDeCorrida` (`app.persistencia`). Ciclo de vida no banco:
+
+- motor criado (conexão ou `restart`): histórico anterior apagado, status `running`;
+- fim normal da corrida: status `finished`;
+- último cliente sai antes do fim: status `aborted` (as voltas gravadas ficam).
+
+Qualquer outro `race_id` roda só em memória, como antes.
 """
 
 from __future__ import annotations
@@ -17,9 +29,12 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app import db_sessao
+from app.corrida_persistida import carregar_corrida_do_banco, estado_inicial
+from app.persistencia import GravadorDeCorrida, eventos_do_motor
 from sim.engine import RaceEngine
 from sim.run import montar_grid_inicial
-from sim.state import RaceState
+from sim.state import LapResult, RaceState
 from sim.track import TrackMap
 
 logger = logging.getLogger("apexsim.websocket")
@@ -34,10 +49,22 @@ connected_clients: dict[str, set[WebSocket]] = {}
 # "restart") nunca envia um envelope atrasado para os clientes da nova corrida.
 engine_generations: dict[str, int] = {}
 _generation_counter = itertools.count(1)
+# Gravador da corrida em andamento (só para corridas que existem no banco).
+active_recorders: dict[str, GravadorDeCorrida] = {}
+# Gravação do status `aborted` ainda em voo. Quem recriar o motor da mesma corrida
+# espera ela terminar, senão o `aborted` poderia chegar depois do novo `running`.
+_pending_aborts: dict[str, asyncio.Task[None]] = {}
 
 
-def stop_engine(race_id: str) -> None:
-    """Encerra e remove o motor e a task assíncrona de uma corrida."""
+def stop_engine(race_id: str, *, abort: bool = False) -> None:
+    """Encerra e remove o motor e a task assíncrona de uma corrida.
+
+    Args:
+        race_id: Corrida a encerrar.
+        abort: True quando a corrida acaba sem ninguém assistindo (último cliente
+            saiu). Se ela estava sendo gravada e não terminou, vira `aborted`.
+            Num `restart` é False: o motor novo vai limpar e regravar a corrida.
+    """
     engine = active_engines.pop(race_id, None)
     if engine is not None:
         engine.stop()
@@ -47,6 +74,51 @@ def stop_engine(race_id: str) -> None:
         task.cancel()
 
     engine_generations.pop(race_id, None)
+
+    gravador = active_recorders.pop(race_id, None)
+    if gravador is not None:
+        terminou = engine is not None and engine.state.is_finished
+        if not abort:
+            # Restart: o motor novo vai limpar e regravar; nada deste pode entrar depois.
+            gravador.desativar()
+        elif gravador.ativo:
+            # Se a corrida terminou, o `on_finished` normalmente já gravou `finished` e
+            # desativou o gravador; isto cobre o caso de a task ter sido cancelada antes.
+            status = "finished" if terminou else "aborted"
+            tarefa = asyncio.create_task(gravador.mudar_status(status))
+            _pending_aborts[race_id] = tarefa
+
+            def _esquecer(feita: asyncio.Task[None], r: str = race_id) -> None:
+                # Só remove se ninguém registrou outra gravação para a mesma corrida.
+                if _pending_aborts.get(r) is feita:
+                    _pending_aborts.pop(r, None)
+
+            tarefa.add_done_callback(_esquecer)
+
+
+def _recording_hooks(race_id: str, gravador: GravadorDeCorrida) -> dict[str, Any]:
+    """Ganchos `on_lap_closed`/`on_finished` do motor que gravam no banco.
+
+    Falha de banco não derruba a corrida ao vivo: o erro é registrado, o gravador é
+    desativado (para não deixar buracos no meio do histórico) e a transmissão segue.
+    """
+
+    async def on_lap_closed(voltas: list[LapResult], eventos: list[dict[str, Any]]) -> None:
+        if not gravador.ativo:
+            return
+        try:
+            await gravador.registrar_volta(voltas, eventos_do_motor(eventos))
+        except Exception:
+            logger.exception("Falha ao gravar volta da corrida %s; gravação desligada", race_id)
+            gravador.desativar()
+
+    async def on_finished() -> None:
+        try:
+            await gravador.mudar_status("finished")
+        except Exception:
+            logger.exception("Falha ao marcar a corrida %s como finished", race_id)
+
+    return {"on_lap_closed": on_lap_closed, "on_finished": on_finished}
 
 
 def _load_track_map(circuit_id: str) -> TrackMap | None:
@@ -66,8 +138,13 @@ def get_or_create_engine(
     track_temp: float = 32.0,
     force_new: bool = False,
     circuit_id: str = "interlagos",
+    gravador: GravadorDeCorrida | None = None,
 ) -> RaceEngine:
-    """Recupera a instância ativa do RaceEngine ou inicializa uma nova para a corrida."""
+    """Recupera a instância ativa do RaceEngine ou inicializa uma nova para a corrida.
+
+    Com `gravador`, o motor novo grava cada volta fechada no banco. O gravador já
+    deve estar preparado (`GravadorDeCorrida.preparar`).
+    """
     if force_new:
         # Descarta completamente o motor anterior antes de criar o próximo.
         stop_engine(race_id)
@@ -109,18 +186,63 @@ def get_or_create_engine(
             track_temp=track_temp,
             broadcast_fn=_broadcast,
             track_map=track_map,
+            **(_recording_hooks(race_id, gravador) if gravador is not None else {}),
         )
+        if gravador is not None:
+            active_recorders[race_id] = gravador
         active_engines[race_id] = engine
         active_tasks[race_id] = asyncio.create_task(engine.run())
 
     return active_engines[race_id]
 
 
+async def _start_persisted_engine(race_id: str, force_new: bool) -> RaceEngine | None:
+    """Cria o motor de uma corrida gravada no banco. None se a corrida não estiver lá.
+
+    Grid, voltas, seed, clima e circuito vêm do banco; o payload do cliente é
+    ignorado para essas corridas, para o que é gravado bater com o que foi criado.
+    """
+    if not force_new and race_id in active_engines:
+        return active_engines[race_id]
+
+    corrida = await carregar_corrida_do_banco(race_id)
+    if corrida is None:
+        return None
+
+    # Desliga o motor e o gravador antigos ANTES de limpar o histórico.
+    stop_engine(race_id)
+    pendente = _pending_aborts.pop(race_id, None)
+    if pendente is not None:
+        await asyncio.gather(pendente, return_exceptions=True)
+
+    gravador = GravadorDeCorrida(db_sessao.engine(), corrida.race_id)
+    try:
+        await gravador.preparar()
+    except Exception:
+        logger.exception("Não foi possível preparar a gravação da corrida %s", race_id)
+        gravador = None
+
+    config = corrida.config
+    mapa = _load_track_map(corrida.circuit_id)
+    comprimento = mapa.length_m if mapa is not None else 4309.0
+    return get_or_create_engine(
+        race_id=race_id,
+        state=estado_inicial(corrida, comprimento),
+        seed=corrida.seed,
+        weather=str(config.get("weather", "DRY")),
+        track_temp=float(config.get("track_temp", 32.0)),
+        circuit_id=corrida.circuit_id,
+        gravador=gravador,
+    )
+
+
 async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
     await websocket.accept()
     connected_clients.setdefault(race_id, set()).add(websocket)
 
-    engine = get_or_create_engine(race_id)
+    engine = await _start_persisted_engine(race_id, force_new=False) or get_or_create_engine(
+        race_id
+    )
 
     # Envia snapshot da volta atual imediatamente após conectar
     try:
@@ -137,7 +259,13 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
                     continue
 
                 action = payload.get("action")
+                persisted = None
                 if action in ("restart", "start", "init"):
+                    persisted = await _start_persisted_engine(race_id, force_new=True)
+                if persisted is not None:
+                    engine = persisted
+                    await websocket.send_text(json.dumps(engine.get_lap_update_envelope()))
+                elif action in ("restart", "start", "init"):
                     # O setup envia o grid e os compostos escolhidos; sem isso a
                     # corrida sempre largaria com o grid padrão e pneus MEDIUM.
                     grid = payload.get("grid")
@@ -193,7 +321,7 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
                 # Último cliente saiu: não faz sentido continuar simulando a
                 # corrida antiga em segundo plano.
                 connected_clients.pop(race_id, None)
-                stop_engine(race_id)
+                stop_engine(race_id, abort=True)
 
 
 @router.websocket("/ws/races/{race_id}")

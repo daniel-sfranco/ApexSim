@@ -24,6 +24,7 @@ from sim.overtaking import compound_name, sample_overtake
 from sim.physics import tyre_grip, tyre_time_loss
 from sim.state import (
     DriverState,
+    LapResult,
     PitStatus,
     RaceState,
     TrackStatus,
@@ -36,6 +37,13 @@ from sim.track import TrackMap
 from strategy.heuristic import PitStrategyHeuristic
 
 BroadcastCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+
+# Gancho de "fim de volta": recebe as voltas (`LapResult`) fechadas desde a última
+# chamada e os envelopes `event_update` emitidos no mesmo intervalo. É por onde a
+# camada de aplicação grava a corrida no banco sem que o `sim/` saiba que há banco.
+LapClosedCallback = Callable[[list[LapResult], list[dict[str, Any]]], Awaitable[None]]
+# Chamado uma única vez, depois do último `on_lap_closed`, quando a corrida termina.
+FinishedCallback = Callable[[], Awaitable[None]]
 
 # Mapeia o clima do contrato D2 ("DRY"/"DAMP"/"WET") para o vocabulário do
 # gerador de incidentes (sim.events).
@@ -94,6 +102,8 @@ class RaceEngine:
         base_lap_delay: float = 2.0,
         broadcast_fn: BroadcastCallback | None = None,
         track_map: TrackMap | None = None,
+        on_lap_closed: LapClosedCallback | None = None,
+        on_finished: FinishedCallback | None = None,
     ) -> None:
         """Inicializa o motor da corrida.
 
@@ -109,6 +119,11 @@ class RaceEngine:
             base_lap_delay: Legado para retrocompatibilidade.
             broadcast_fn: Callback assíncrono para envio de envelopes.
             track_map: Mapa semântico de pista 1D (Contrato D4).
+            on_lap_closed: Gancho chamado uma vez por volta do líder (nunca por
+                tick) com as voltas e eventos novos. O loop espera o gancho
+                terminar antes de seguir, então o histórico chega em ordem.
+            on_finished: Gancho chamado quando a corrida termina normalmente
+                (não é chamado se o motor for parado com `stop()`).
         """
         self.state = race_state
         self.track_length = float(track_length)
@@ -156,6 +171,17 @@ class RaceEngine:
 
         # Volta da última parada de cada piloto (contexto de undercut da heurística).
         self._last_pit_lap: dict[str, int] = {}
+
+        # Ganchos de fim de volta / fim de corrida (persistência, fora do sim/).
+        self.on_lap_closed = on_lap_closed
+        self.on_finished = on_finished
+        # Quantas entradas de `lap_history` já foram entregues ao gancho.
+        self._laps_delivered = 0
+        # Eventos emitidos desde a última entrega ao gancho. `pending_events` não
+        # serve: ele é esvaziado a cada tick pelo broadcast.
+        self._events_since_lap_closed: list[dict[str, Any]] = []
+        # Marcado pelo `step_tick` quando o líder fecha uma volta.
+        self._race_lap_closed = False
 
     # -----------------------------------------------------------------------
     # CONTROLES DE FLUXO EM TEMPO REAL
@@ -252,6 +278,7 @@ class RaceEngine:
             self._on_new_race_lap(self._lap_incidents)
             self._lap_incidents = []
             self._previous_race_lap = self.state.current_lap
+            self._race_lap_closed = True
 
         if todos_pilotos_finalizados(self.state):
             self.state.is_finished = True
@@ -289,17 +316,18 @@ class RaceEngine:
         lap: int | None = None,
     ) -> None:
         """Enfileira um envelope `event_update` (Contrato D2)."""
-        self.pending_events.append(
-            {
-                "type": "event_update",
-                "race_id": self.race_id,
-                "lap": int(lap if lap is not None else self.state.current_lap),
-                "event_type": event_type,
-                "involved_drivers": list(involved_drivers),
-                "zone_id": zone_id,
-                "description": description,
-            }
-        )
+        envelope = {
+            "type": "event_update",
+            "race_id": self.race_id,
+            "lap": int(lap if lap is not None else self.state.current_lap),
+            "event_type": event_type,
+            "involved_drivers": list(involved_drivers),
+            "zone_id": zone_id,
+            "description": description,
+        }
+        self.pending_events.append(envelope)
+        if self.on_lap_closed is not None:
+            self._events_since_lap_closed.append(envelope)
 
     def _advance_cooldowns(self, delta_time: float) -> None:
         """Decrementa o cooldown de ultrapassagem de cada piloto."""
@@ -615,6 +643,25 @@ class RaceEngine:
             if inspect.isawaitable(res):
                 await res
 
+    async def _deliver_closed_laps(self) -> None:
+        """Entrega ao gancho as voltas e eventos acumulados desde a última entrega.
+
+        Roda uma vez por volta do líder, e não por tick: as voltas dos demais
+        pilotos fecham em ticks diferentes, então cada lote leva o que fechou no
+        intervalo (tipicamente a volta N do líder e a N-1 ou N do resto do pelotão).
+        """
+        self._race_lap_closed = False
+        if self.on_lap_closed is None:
+            return
+
+        novas_voltas = self.state.lap_history[self._laps_delivered :]
+        self._laps_delivered = len(self.state.lap_history)
+        eventos = self._events_since_lap_closed
+        self._events_since_lap_closed = []
+
+        if novas_voltas or eventos:
+            await self.on_lap_closed(list(novas_voltas), eventos)
+
     # -----------------------------------------------------------------------
     # LOOP PRINCIPAL ASSÍNCRONO PASSO A PASSO
     # -----------------------------------------------------------------------
@@ -640,6 +687,11 @@ class RaceEngine:
                 event = self.pending_events.pop(0)
                 await self._emit_broadcast(event)
 
+            # Uma entrega por volta do líder, e a última ao terminar a corrida
+            # (os pilotos que cruzam a linha depois do líder ainda fecham voltas).
+            if self._race_lap_closed or self.state.is_finished:
+                await self._deliver_closed_laps()
+
             # Pausa ajustada pela velocidade configurada
             sleep_duration = (
                 self.base_tick_delay / self.speed_multiplier
@@ -650,3 +702,6 @@ class RaceEngine:
                 await asyncio.sleep(sleep_duration)
             else:
                 await asyncio.sleep(0)
+
+        if self.state.is_finished and not self.is_stopped and self.on_finished is not None:
+            await self.on_finished()
