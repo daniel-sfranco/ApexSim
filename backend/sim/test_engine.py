@@ -524,7 +524,8 @@ def test_safety_car_deployment_updates_status_and_compresses_field():
 
 
 def test_safety_car_compression_with_different_laps_no_negative_lap_time():
-    """Garante que compressão com pilotos em voltas diferentes não gera tempos negativos nem ignora pilotos."""
+    """Garante que compressão com pilotos em voltas diferentes não gera tempos negativos nem ignora
+    pilotos."""
     state = montar_grid_inicial(grid=["VER", "PER", "HAM"], track_length=2000.0)
     state.total_laps = 10
     engine = RaceEngine(race_state=state, track_length=2000.0, seed=42)
