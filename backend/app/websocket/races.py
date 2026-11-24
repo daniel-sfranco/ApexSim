@@ -330,7 +330,9 @@ async def _handle_connection(websocket: WebSocket, race_id: str) -> None:
 
                     raw_track_temp = payload.get("track_temp") or payload.get("trackTemp")
                     try:
-                        track_temp_val = float(raw_track_temp) if raw_track_temp is not None else 32.0
+                        track_temp_val = (
+                            float(raw_track_temp) if raw_track_temp is not None else 32.0
+                        )
                     except (ValueError, TypeError):
                         track_temp_val = 32.0
 

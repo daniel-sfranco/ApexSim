@@ -1,10 +1,11 @@
 import sys
 from pathlib import Path
+
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from physics import tyre_grip, tyre_time_loss, fuel_time_delta, TYRE_TABLE
+from physics import TYRE_TABLE, fuel_time_delta, tyre_grip, tyre_time_loss
 
 
 class TestTyreGrip:

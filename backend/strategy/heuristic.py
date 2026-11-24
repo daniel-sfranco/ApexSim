@@ -58,7 +58,9 @@ class PitStrategyHeuristic:
             team_aggression: Dicionário mapeando nome da equipe para um float (0.0 a 1.0).
                              Ex: {"Ferrari": 0.8, "Red Bull": 0.9, "Haas": 0.2}
         """
-        self.team_aggression = dict(DEFAULT_TEAM_AGGRESSION) if team_aggression is None else team_aggression
+        self.team_aggression = (
+            dict(DEFAULT_TEAM_AGGRESSION) if team_aggression is None else team_aggression
+        )
 
     def _get_aggression(self, team: str) -> float:
         """Obtém o nível de agressividade da equipe (default 0.5 se não especificado)."""

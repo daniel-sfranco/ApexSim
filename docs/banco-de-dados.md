@@ -162,7 +162,7 @@ inteira é desfeita. O `sim/` continua puro; quem monta a corrida entrega o call
 ```python
 gravador = GravadorDeCorrida(engine, race_id)
 await gravador.mudar_status("running")
-await gravador.registrar_volta(voltas, eventos)   # a cada volta concluída
+await gravador.registrar_volta(voltas, eventos)  # a cada volta concluída
 await gravador.mudar_status("finished")
 ```
 

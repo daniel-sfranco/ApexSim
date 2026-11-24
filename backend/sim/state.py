@@ -130,7 +130,9 @@ class DriverState:
     pit_stop_in_this_lap: bool = False  # Sinaliza pit stop na volta atual
     pit_time_in_this_lap: float | None = None  # Duração total da passagem no pit
     overtake_cooldown_s: float = 0.0  # Impede ultrapassagens em sequência (s)
-    incident_time_remaining: float = 0.0  # Tempo restante imobilizado/em recuperação de incidente (s)
+    incident_time_remaining: float = (
+        0.0  # Tempo restante imobilizado/em recuperação de incidente (s)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -481,9 +483,7 @@ def format_lap_update(
             gap_to_ahead = None if posicao == 1 else 0.0
         else:
             gap_to_leader = round(float(d.gap_to_leader), 3)
-            gap_to_ahead = (
-                round(float(d.gap_to_ahead), 3) if d.gap_to_ahead is not None else None
-            )
+            gap_to_ahead = round(float(d.gap_to_ahead), 3) if d.gap_to_ahead is not None else None
         drivers_list.append(
             {
                 "driver_id": d.driver_id,

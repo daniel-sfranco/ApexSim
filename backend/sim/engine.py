@@ -620,9 +620,16 @@ class RaceEngine:
                 else:
                     # Carro já cruzou a linha no mesmo tick; permanece à frente da linha sem wrap-around
                     fator = gap_lider / (len(ativos) * 10.0 + 1.0)
-                    distancia = max(0.1, min(driver.lap_distance_covered, lider.lap_distance_covered * (1.0 - fator)))
+                    distancia = max(
+                        0.1,
+                        min(
+                            driver.lap_distance_covered, lider.lap_distance_covered * (1.0 - fator)
+                        ),
+                    )
                     driver.lap_distance_covered = distancia
-                    driver.total_distance_covered = lider.current_lap * self.track_length + distancia
+                    driver.total_distance_covered = (
+                        lider.current_lap * self.track_length + distancia
+                    )
             else:
                 # Caso comum: carro ainda está na volta anterior à do líder
                 target_total = max(0.0, lider.total_distance_covered - janela_m)
