@@ -11,7 +11,6 @@ import {
   ChevronDown,
   Flag,
   CloudSun,
-  Settings2,
   ArrowRight,
   Server,
   CheckCircle2,
@@ -110,6 +109,9 @@ export const SetupForm: React.FC = () => {
     reorderGrid(grid);
     resetRace();
 
+    // Cria a corrida no backend e usa o `race_id` devolvido: é ele que permite ao
+    // WebSocket carregar circuito, voltas e clima gravados pela API. Se a API
+    // estiver indisponível, cai no modo memória com um id local.
     let targetRaceId = "race-" + Math.random().toString(36).substring(2, 9);
 
     const requestBody: CreateRaceRequest = {
@@ -119,20 +121,28 @@ export const SetupForm: React.FC = () => {
       weather,
       track_temp: Number(trackTemp),
       grid,
-      initial_tyres: startingTyres,
+      // Apenas pilotos presentes no grid, como exige o contrato da API.
+      initial_tyres: Object.fromEntries(
+        Object.entries(startingTyres).filter(([code]) => grid.includes(code)),
+      ),
     };
 
     try {
-      // Dispara criação oficial da corrida na API do ApexSim
       const apiResponse = await createRace(requestBody);
-      if (apiResponse && apiResponse.race_id) {
+      if (typeof apiResponse?.race_id === "string" && apiResponse.race_id) {
         targetRaceId = apiResponse.race_id;
-        console.log(`[SetupForm] Corrida criada no backend com ID: ${targetRaceId}`);
+        console.log(
+          `[SetupForm] Corrida criada no backend com ID: ${targetRaceId}`,
+        );
       }
     } catch (err: any) {
+    } catch (err: any) {
       console.warn(
-        `[SetupForm] API backend não respondeu (iniciando em modo local):`,
-        err?.message || err
+        "[SetupForm] API backend não respondeu; usando corrida em memória:",
+        err?.message || err,
+      );
+      setStatusMessage(
+        "API backend offline ou indisponível. Iniciando cockpit em modo de simulação autônoma...",
       );
       setStatusMessage("API backend offline ou indisponível. Iniciando cockpit em modo de simulação autônoma...");
     }
