@@ -11,7 +11,6 @@ import {
   ChevronDown,
   Flag,
   CloudSun,
-  Settings2,
   ArrowRight,
   Server,
   CheckCircle2,
@@ -115,42 +114,36 @@ export const SetupForm: React.FC = () => {
     // Cria a corrida no backend e usa o `race_id` devolvido: é ele que permite ao
     // WebSocket carregar circuito, voltas e clima gravados pela API. Se a API
     // estiver indisponível, cai no modo memória com um id local.
-    let raceId = "race-" + Math.random().toString(36).substring(2, 9);
+    let targetRaceId = "race-" + Math.random().toString(36).substring(2, 9);
+
+    const requestBody: CreateRaceRequest = {
+      circuit_id: selectedCircuit,
+      total_laps: Number(totalLaps),
+      seed: Number(seed),
+      weather,
+      track_temp: Number(trackTemp),
+      grid,
+      // Apenas pilotos presentes no grid, como exige o contrato da API.
+      initial_tyres: Object.fromEntries(
+        Object.entries(startingTyres).filter(([code]) => grid.includes(code)),
+      ),
+    };
+
     try {
-      const apiUrl =
-        (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
-      const resposta = await fetch(`${apiUrl}/api/races`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          circuit_id: selectedCircuit,
-          total_laps: totalLaps,
-          seed,
-          weather,
-          track_temp: trackTemp,
-          grid,
-          // Apenas pilotos presentes no grid, como exige o contrato da API.
-          initial_tyres: Object.fromEntries(
-            Object.entries(startingTyres).filter(([code]) =>
-              grid.includes(code),
-            ),
-          ),
-        }),
-      });
-      if (resposta.ok) {
-        const dados = await resposta.json();
-        if (typeof dados?.race_id === "string" && dados.race_id) {
-          raceId = dados.race_id;
-        }
-      } else {
-        console.warn(
-          `[SetupForm] POST /api/races falhou (${resposta.status}); usando corrida em memória`,
+      const apiResponse = await createRace(requestBody);
+      if (typeof apiResponse?.race_id === "string" && apiResponse.race_id) {
+        targetRaceId = apiResponse.race_id;
+        console.log(
+          `[SetupForm] Corrida criada no backend com ID: ${targetRaceId}`,
         );
       }
-    } catch (erro) {
+    } catch (err: any) {
       console.warn(
-        "[SetupForm] API indisponível; usando corrida em memória",
-        erro,
+        "[SetupForm] API backend não respondeu; usando corrida em memória:",
+        err?.message || err,
+      );
+      setStatusMessage(
+        "API backend offline ou indisponível. Iniciando cockpit em modo de simulação autônoma...",
       );
     }
 
