@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from app.models.track import TrackMap
+    from sim.track import TrackMap
 
 Compound = Literal["soft", "medium", "hard", "intermediate", "wet"]
 
@@ -95,7 +95,21 @@ def _temp_penalty(track_temp: float) -> float:
     return 0.0
 
 
-def tyre_time_loss(compound: str, age_laps: int, track_temp: float = 35.0) -> float:
+def normalize_compound_name(compound: object, *, default: str | None = None) -> str:
+    """Normaliza nome ou Enum de composto para minúsculas (`soft`..`wet`)."""
+    raw = getattr(compound, "name", None)
+    text = raw if isinstance(raw, str) else str(compound)
+    c = text.lower().strip()
+    if "." in c:
+        c = c.split(".")[-1]
+    if c == "inter":
+        c = "intermediate"
+    if c in TYRE_TABLE:
+        return c
+    return default if default is not None else c
+
+
+def tyre_time_loss(compound: Compound | str, age_laps: int, track_temp: float = 35.0) -> float:
     """Perda de tempo (s) em relacao ao pneu novo, na temperatura ideal.
 
     Equacao (docs/fisica.md Sec. 1.1):
@@ -112,13 +126,7 @@ def tyre_time_loss(compound: str, age_laps: int, track_temp: float = 35.0) -> fl
     if age_laps < 0:
         raise ValueError("age_laps deve ser >= 0")
 
-    raw_c = compound if isinstance(compound, str) else getattr(compound, "value", str(compound))
-    c = raw_c.lower().strip()
-    if "." in c:
-        c = c.split(".")[-1]
-    if c == "inter":
-        c = "intermediate"
-
+    c = normalize_compound_name(compound)
     if c not in TYRE_TABLE:
         expected = list(TYRE_TABLE.keys())
         raise ValueError(f"composto desconhecido: '{compound}'. Esperados: {expected}")
@@ -130,7 +138,7 @@ def tyre_time_loss(compound: str, age_laps: int, track_temp: float = 35.0) -> fl
     return quad_term + cliff + temp_pen
 
 
-def tyre_grip(compound: str, age_laps: int, track_temp: float = 35.0) -> float:
+def tyre_grip(compound: Compound | str, age_laps: int, track_temp: float = 35.0) -> float:
     """Fator de aderencia normalizado (1.0 = grip maximo de pneu novo).
 
     grip(a,c) = 1 / (1 + t_tire(a,c) / tau)
@@ -319,24 +327,3 @@ def drs_lap_time_gain(
 
     total_drs_length_m = sum(z.length_m for z in track_map.zones if z.type == "drs_activation")
     return drs_zone_time_gain(total_drs_length_m, eligible=True)
-
-
-# ---------------------------------------------------------------------
-# Integracao e Re-exports de Eventos / Safety Car e Clima (M3 e M4)
-# ---------------------------------------------------------------------
-try:
-    from .events import (  # noqa: E402, F401
-        RaceIncident,
-        SafetyCarStateMachine,
-        TrackSegmentRisk,
-        build_track_risk_profile,
-        incident_consequence_probabilities,
-        sample_driver_lap_incident,
-    )
-    from .weather import (  # noqa: E402, F401
-        WeatherSimulator,
-        weather_grip_factor,
-        weather_time_delta,
-    )
-except ImportError:
-    pass
