@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 # Probabilidade base de sucesso em UMA tentativa de ultrapassagem (uma travessia
 # de zona) com ritmo, gap, DRS e dificuldade neutros. O motor faz no máximo uma
 # tentativa por entrada em zona, então o valor já é o da travessia completa.
-OVERTAKE_BASE_ZONE_PROBABILITY = 0.01
+OVERTAKE_BASE_ZONE_PROBABILITY = 0.014
 
 # Teto da probabilidade acumulada em uma travessia de zona.
 OVERTAKE_MAX_ZONE_PROBABILITY = 0.90
@@ -73,9 +73,9 @@ OVERTAKE_GAP_MAX = 1.5
 
 # Peso por dificuldade anotada na zona (`difficulty` do Contrato D4).
 OVERTAKE_DIFFICULTY_WEIGHTS: dict[str, float] = {
-    "baixa": 1.8,
+    "baixa": 1.35,
     "media": 1.0,
-    "alta": 0.5,
+    "alta": 0.7,
 }
 
 # Cooldown (s) para o atacante não emendar ultrapassagens e para o defensor

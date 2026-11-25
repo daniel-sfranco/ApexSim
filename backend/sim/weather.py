@@ -32,11 +32,14 @@ from sim.physics import normalize_compound_name
 
 WeatherState = Literal["seco", "umido", "molhado"]
 
-# Matriz de transição por volta para corrida de tempo instável (docs/fisica.md Seção 6.4).
+# Matriz de transição por volta para corrida com clima dinâmico (docs/fisica.md Seção 6.4).
+# Persistência elevada em todos os estados para evitar oscilações artificiais a cada 2-3 voltas
+# (ping-pong de pit stops): ~63% das corridas de 58 voltas iniciadas no seco permanecem secas,
+# e janelas de pista úmida/molhada duram em média ~7-10 voltas.
 DEFAULT_TRANSITION_PROBABILITIES: dict[WeatherState, dict[WeatherState, float]] = {
-    "seco": {"seco": 0.95, "umido": 0.04, "molhado": 0.01},
-    "umido": {"seco": 0.20, "umido": 0.65, "molhado": 0.15},
-    "molhado": {"seco": 0.02, "umido": 0.23, "molhado": 0.75},
+    "seco": {"seco": 0.992, "umido": 0.007, "molhado": 0.001},
+    "umido": {"seco": 0.08, "umido": 0.85, "molhado": 0.07},
+    "molhado": {"seco": 0.01, "umido": 0.09, "molhado": 0.90},
 }
 
 # Severidade nominal de água na pista theta in [0.0, 1.0].

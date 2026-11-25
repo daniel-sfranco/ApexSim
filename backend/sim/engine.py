@@ -95,7 +95,7 @@ class RaceEngine:
         track_map: TrackMap | None = None,
         on_lap_closed: LapClosedCallback | None = None,
         on_finished: FinishedCallback | None = None,
-        dynamic_weather: bool = True,
+        dynamic_weather: bool = False,
         weather_transition_probs: dict[WeatherState, dict[WeatherState, float]] | None = None,
     ) -> None:
         """Inicializa o motor da corrida.
@@ -118,7 +118,8 @@ class RaceEngine:
             on_finished: Gancho chamado quando a corrida termina normalmente
                 (não é chamado se o motor for parado com `stop()`).
             dynamic_weather: Quando True, evolui o clima volta a volta via Cadeia de
-                Markov (`sim.weather.WeatherSimulator`).
+                Markov (`sim.weather.WeatherSimulator`). Padrão False para respeitar o
+                clima fixo escolhido na configuração da corrida/calibração.
             weather_transition_probs: Matriz de transição opcional para o simulador
                 climático (usa `DEFAULT_TRANSITION_PROBABILITIES` se omitida).
         """

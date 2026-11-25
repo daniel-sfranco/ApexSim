@@ -74,9 +74,9 @@ def duelo() -> RaceState:
 
 
 def test_difficulty_weight():
-    assert difficulty_weight("baixa") == pytest.approx(1.8)
+    assert difficulty_weight("baixa") == pytest.approx(1.35)
     assert difficulty_weight("media") == pytest.approx(1.0)
-    assert difficulty_weight("alta") == pytest.approx(0.5)
+    assert difficulty_weight("alta") == pytest.approx(0.7)
     assert difficulty_weight(None) == pytest.approx(1.0)
     assert difficulty_weight("desconhecida") == pytest.approx(1.0)
 
