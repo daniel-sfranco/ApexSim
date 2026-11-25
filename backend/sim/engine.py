@@ -21,7 +21,7 @@ from typing import Any
 
 from sim.events import RaceIncident, SafetyCarStateMachine, sample_driver_lap_incident
 from sim.overtaking import compound_name, sample_overtake
-from sim.physics import tyre_grip, tyre_time_loss
+from sim.physics import normalize_compound_name, tyre_grip, tyre_time_loss
 from sim.state import (
     DriverState,
     LapResult,
@@ -34,6 +34,14 @@ from sim.state import (
     todos_pilotos_finalizados,
 )
 from sim.track import TrackMap
+from sim.weather import (
+    DEFAULT_TRANSITION_PROBABILITIES,
+    WeatherSimulator,
+    WeatherState,
+    normalize_weather_state,
+    weather_grip_factor,
+    weather_state_to_contract,
+)
 from strategy.heuristic import PitStrategyHeuristic
 
 BroadcastCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
@@ -45,17 +53,6 @@ LapClosedCallback = Callable[[list[LapResult], list[dict[str, Any]]], Awaitable[
 # Chamado uma única vez, depois do último `on_lap_closed`, quando a corrida termina.
 FinishedCallback = Callable[[], Awaitable[None]]
 
-# Mapeia o clima do contrato D2 ("DRY"/"DAMP"/"WET") para o vocabulário do
-# gerador de incidentes (sim.events).
-WEATHER_TO_INCIDENT_CONDITION: dict[str, str] = {
-    "DRY": "seco",
-    "SECO": "seco",
-    "DAMP": "umido",
-    "UMIDO": "umido",
-    "WET": "molhado",
-    "MOLHADO": "molhado",
-}
-
 # Mapeia a máquina de estados de direção de prova para o enum do Contrato D2.
 RACE_CONTROL_TO_TRACK_STATUS: dict[str, TrackStatus] = {
     "GREEN": TrackStatus.GREEN,
@@ -63,26 +60,20 @@ RACE_CONTROL_TO_TRACK_STATUS: dict[str, TrackStatus] = {
     "SC": TrackStatus.SAFETY_CAR,
 }
 
-# Clima no vocabulário da heurística de estratégia (`strategy.heuristic`), que
-# distingue apenas pista seca ("dry") de molhada ("wet"); "damp" é neutro.
-WEATHER_TO_HEURISTIC_CONDITION: dict[str, str] = {
-    "DRY": "dry",
-    "SECO": "dry",
-    "DAMP": "damp",
-    "UMIDO": "damp",
-    "WET": "wet",
-    "MOLHADO": "wet",
-}
-
 # Janela (voltas) em que a parada do rival de trás ainda configura undercut.
 UNDERCUT_WINDOW_LAPS = 2
 
-# Compostos de chuva não existem na tabela de degradação seca (`sim.physics`);
-# a heurística os projeta usando o slick equivalente (mesma convenção de
-# `sim.state.tick()` e `sim.overtaking.compound_name`).
-STRATEGY_DEGRADATION_PROXY: dict[str, str] = {
-    "intermediate": "medium",
-    "wet": "medium",
+# Descrições de telemetria emitidas quando a cadeia de Markov climática muda de estado.
+WEATHER_CHANGE_DESCRIPTIONS: dict[WeatherState, str] = {
+    "seco": "Pista secando: condição climática mudou para SECO (DRY). Pneus slick favorecidos.",
+    "umido": (
+        "Chuva leve na pista: condição climática mudou para ÚMIDO (DAMP). "
+        "Janela de pneus intermediários."
+    ),
+    "molhado": (
+        "Chuva intensa na pista: condição climática mudou para MOLHADO (WET). "
+        "Pneus de chuva extrema recomendados."
+    ),
 }
 
 
@@ -104,6 +95,8 @@ class RaceEngine:
         track_map: TrackMap | None = None,
         on_lap_closed: LapClosedCallback | None = None,
         on_finished: FinishedCallback | None = None,
+        dynamic_weather: bool = False,
+        weather_transition_probs: dict[WeatherState, dict[WeatherState, float]] | None = None,
     ) -> None:
         """Inicializa o motor da corrida.
 
@@ -124,13 +117,22 @@ class RaceEngine:
                 terminar antes de seguir, então o histórico chega em ordem.
             on_finished: Gancho chamado quando a corrida termina normalmente
                 (não é chamado se o motor for parado com `stop()`).
+            dynamic_weather: Quando True, evolui o clima volta a volta via Cadeia de
+                Markov (`sim.weather.WeatherSimulator`). Padrão False para respeitar o
+                clima fixo escolhido na configuração da corrida/calibração.
+            weather_transition_probs: Matriz de transição opcional para o simulador
+                climático (usa `DEFAULT_TRANSITION_PROBABILITIES` se omitida).
         """
         self.state = race_state
         self.track_length = float(track_length)
         self.race_id = race_id or str(uuid.uuid4())
         self.seed = int(seed)
         self.rng = random.Random(self.seed)
-        self.weather = weather
+        self.weather_simulator = WeatherSimulator(
+            current_state=normalize_weather_state(weather, default="seco"),
+            transition_probs=weather_transition_probs or DEFAULT_TRANSITION_PROBABILITIES,
+        )
+        self.dynamic_weather = bool(dynamic_weather)
         self.track_temp = float(track_temp)
         self.delta_time = float(delta_time)
         self.base_lap_delay = float(base_lap_delay)
@@ -270,6 +272,7 @@ class RaceEngine:
             laps_since_restart=self.race_control.laps_since_restart,
             is_wet=not self.is_dry,
             pit_speed_limit_ms=self.pit_speed_limit_ms,
+            weather=self.incident_weather,
         )
 
         # Eventos estocásticos e direção de prova (M3)
@@ -292,19 +295,28 @@ class RaceEngine:
     # -----------------------------------------------------------------------
 
     @property
-    def is_dry(self) -> bool:
-        """True quando a pista está seca (habilita DRS e reduz risco)."""
-        return str(self.weather).strip().upper() in ("DRY", "SECO")
+    def weather(self) -> str:
+        """Condição climática atual no vocabulário do Contrato D2 (`DRY`/`DAMP`/`WET`)."""
+        return weather_state_to_contract(self.weather_simulator.current_state)
+
+    @weather.setter
+    def weather(self, value: str) -> None:
+        self.weather_simulator.current_state = normalize_weather_state(value, default="seco")
 
     @property
-    def incident_weather(self) -> str:
-        """Clima no vocabulário do gerador de incidentes (`sim.events`)."""
-        return WEATHER_TO_INCIDENT_CONDITION.get(str(self.weather).strip().upper(), "seco")
+    def is_dry(self) -> bool:
+        """True quando a pista está seca (habilita DRS e reduz risco)."""
+        return self.weather_simulator.current_state == "seco"
+
+    @property
+    def incident_weather(self) -> WeatherState:
+        """Clima no vocabulário do gerador de incidentes e física (`sim.events`/`sim.weather`)."""
+        return self.weather_simulator.current_state
 
     @property
     def heuristic_weather(self) -> str:
         """Clima no vocabulário da heurística de estratégia (`strategy.heuristic`)."""
-        return WEATHER_TO_HEURISTIC_CONDITION.get(str(self.weather).strip().upper(), "dry")
+        return self.weather.lower()
 
     def _aggression_for(self, team: str) -> float:
         """Agressividade da equipe configurada na heurística de estratégia."""
@@ -402,13 +414,9 @@ class RaceEngine:
             )
 
     def _strategy_degradation_curve(self, compound: str, age_laps: int) -> float:
-        """Projeção de degradação da heurística, com proxy para compostos de chuva."""
-        name = str(compound).strip().lower()
-        return tyre_time_loss(
-            STRATEGY_DEGRADATION_PROXY.get(name, name),  # type: ignore[arg-type]
-            age_laps,
-            self.track_temp,
-        )
+        """Projeção de degradação da heurística (slicks e pneus de chuva nativos)."""
+        name = normalize_compound_name(compound, default="medium")
+        return tyre_time_loss(name, age_laps, self.track_temp)
 
     def _strategy_race_state(self) -> dict[str, Any]:
         """`RaceState` adaptado ao contrato de entrada da heurística de estratégia."""
@@ -462,6 +470,7 @@ class RaceEngine:
             self.track_map,
             self.rng,
             track_temp=self.track_temp,
+            weather=self.incident_weather,
         )
         for resultado in resultados:
             atacante = self.state.drivers.get(resultado.attacker_id)
@@ -492,18 +501,17 @@ class RaceEngine:
             if driver.current_lap <= anterior:
                 continue
 
-            grip = tyre_grip(
-                compound_name(driver),  # type: ignore[arg-type]
-                driver.tyre_age,
-                self.track_temp,
-            )
+            comp = compound_name(driver)
+            grip_pneu = tyre_grip(comp, driver.tyre_age, self.track_temp)
+            grip_clima = weather_grip_factor(comp, self.incident_weather)
+            grip = grip_pneu * grip_clima
             incident = sample_driver_lap_incident(
                 driver.driver_id,
                 driver.current_lap,
                 self.track_map,
                 self.rng,
-                grip_factor=max(0.3, min(1.0, grip)),
-                weather=self.incident_weather,  # type: ignore[arg-type]
+                grip_factor=max(0.15, min(1.0, grip)),
+                weather=self.incident_weather,
                 aggression=self._aggression_for(driver.team),
             )
             if incident is not None:
@@ -557,12 +565,28 @@ class RaceEngine:
         )
 
     def _on_new_race_lap(self, incidents: list[RaceIncident]) -> None:
-        """Avança a direção de prova ao fim de uma volta da corrida."""
+        """Avança a direção de prova e a cadeia de Markov climática ao fim da volta."""
         anterior = self.race_control.state
         self.race_control.advance_lap()
         if incidents:
             self.race_control.trigger_from_incidents(incidents, self.rng)
         self._sync_track_status(anterior, incidents)
+
+        if self.dynamic_weather and self.state.current_lap < self.state.total_laps:
+            self._advance_weather()
+
+    def _advance_weather(self) -> None:
+        """Evolui o estado climático em uma volta e emite `WEATHER_CHANGED` se houver transição."""
+        anterior = self.weather_simulator.current_state
+        atual = self.weather_simulator.advance_lap(self.rng)
+        if atual == anterior:
+            return
+
+        self._queue_event(
+            "WEATHER_CHANGED",
+            [],
+            WEATHER_CHANGE_DESCRIPTIONS[atual],
+        )
 
     def _sync_track_status(self, previous: str, incidents: list[RaceIncident]) -> None:
         """Espelha o estado da direção de prova no `track_status` do Contrato D2."""

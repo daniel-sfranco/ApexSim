@@ -65,12 +65,33 @@ def test_overtaking_zone_prefers_overtaking_spot():
     assert zona.props["difficulty"] == "media"
 
 
-def test_overtaking_zone_falls_back_for_interlagos(interlagos: TrackMap):
-    """Interlagos não tem `overtaking_spot`; a cascata usa `drs_activation`."""
-    zona = interlagos.get_overtaking_zone_at(800.0)
+def test_overtaking_zone_does_not_double_count_drs_when_spots_exist():
+    """Circuitos com `overtaking_spot` anotado não somam `drs_activation` como zona extra."""
+    mapa = TrackMap(
+        circuit_id="com-spots",
+        length_m=1000,
+        points=[],
+        zones=[
+            Zone("overtaking_spot", 100, 200, {"difficulty": "baixa"}),
+            Zone("drs_activation", 500, 800),
+        ],
+    )
+    assert mapa.get_overtaking_zone_at(150.0) is not None
+    assert mapa.get_overtaking_zone_at(600.0) is None
+
+
+def test_overtaking_zone_falls_back_when_circuit_has_no_spots():
+    """Circuitos sem `overtaking_spot` usam `drs_activation` como fallback."""
+    mapa = TrackMap(
+        circuit_id="sem-spots",
+        length_m=1000,
+        points=[],
+        zones=[Zone("drs_activation", 400, 800)],
+    )
+    zona = mapa.get_overtaking_zone_at(600.0)
     assert zona is not None
     assert zona.type == "drs_activation"
-    assert interlagos.get_overtaking_zone_at(800.0, fallback=False) is None
+    assert mapa.get_overtaking_zone_at(600.0, fallback=False) is None
 
 
 def test_drs_activation_zone_at():

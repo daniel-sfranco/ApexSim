@@ -14,7 +14,9 @@ from sim.overtaking import (
     OVERTAKE_DRS_WEIGHT,
     OVERTAKE_MAX_GAP_S,
     OVERTAKE_MAX_ZONE_PROBABILITY,
+    compound_name,
     difficulty_weight,
+    estimate_lap_time,
     gap_weight,
     overtake_probability,
     pace_weight,
@@ -22,7 +24,7 @@ from sim.overtaking import (
     zone_difficulty,
 )
 from sim.run import montar_grid_inicial
-from sim.state import RaceState, TrackStatus
+from sim.state import RaceState, TrackStatus, TyreCompound
 from sim.track import TrackMap, Zone
 
 
@@ -72,9 +74,9 @@ def duelo() -> RaceState:
 
 
 def test_difficulty_weight():
-    assert difficulty_weight("baixa") == pytest.approx(1.8)
+    assert difficulty_weight("baixa") == pytest.approx(1.35)
     assert difficulty_weight("media") == pytest.approx(1.0)
-    assert difficulty_weight("alta") == pytest.approx(0.5)
+    assert difficulty_weight("alta") == pytest.approx(0.7)
     assert difficulty_weight(None) == pytest.approx(1.0)
     assert difficulty_weight("desconhecida") == pytest.approx(1.0)
 
@@ -223,3 +225,20 @@ def test_sample_overtake_gate_finished_race(duelo: RaceState, mapa: TrackMap):
     duelo.drivers["VER"].current_lap = duelo.total_laps
     duelo.drivers["NOR"].current_lap = duelo.total_laps
     assert sample_overtake(duelo, mapa, _AlwaysPass()) == []
+
+
+def test_overtake_pace_delta_reflects_weather_and_rain_tyres(duelo: RaceState, mapa: TrackMap):
+    """Atacante com pneu WET na chuva tem enorme vantagem de ritmo sobre defensor com slick."""
+    ver = duelo.drivers["VER"]
+    nor = duelo.drivers["NOR"]
+    ver.tyre_compound = TyreCompound.SOFT
+    nor.tyre_compound = TyreCompound.WET
+
+    assert compound_name(nor) == "wet"
+    t_ver = estimate_lap_time(ver, mapa.length_m, 25.0, weather="molhado")
+    t_nor = estimate_lap_time(nor, mapa.length_m, 25.0, weather="molhado")
+    assert t_ver - t_nor > 10.0
+
+    resultados = sample_overtake(duelo, mapa, _AlwaysPass(), track_temp=25.0, weather="molhado")
+    assert len(resultados) == 1
+    assert resultados[0].pace_delta_s > 10.0

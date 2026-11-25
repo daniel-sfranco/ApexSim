@@ -508,3 +508,65 @@ def test_carro_finalizado_nao_bloqueia_quem_ainda_corre():
     tick(state, delta_time=2.0, track_length=4000.0)
 
     assert state.drivers["RUNNING"].total_distance_covered > 0.0
+
+
+def test_physics_weather_crossover_in_damp_and_wet():
+    """Valida ordenamento de velocidade composto x clima no `tick()` (M4)."""
+    # Em pista úmida: INTERMEDIATE > WET > SOFT
+    damp_state = RaceState(
+        current_lap=2,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "INT": _make_driver("INT", position=1, tyre_compound=TyreCompound.INTERMEDIATE),
+            "WET": _make_driver("WET", position=2, tyre_compound=TyreCompound.WET),
+            "SFT": _make_driver("SFT", position=3, tyre_compound=TyreCompound.SOFT),
+        },
+    )
+    # Afasta os carros para que o bloqueio de fila não interfira na medição de ritmo.
+    damp_state.drivers["INT"].total_distance_covered = 300.0
+    damp_state.drivers["WET"].total_distance_covered = 200.0
+    damp_state.drivers["SFT"].total_distance_covered = 100.0
+
+    tick(
+        damp_state,
+        delta_time=2.0,
+        track_length=4000.0,
+        rng=random.Random(1),
+        use_physics=True,
+        weather="umido",
+    )
+    d_int = damp_state.drivers["INT"].total_distance_covered - 300.0
+    d_wet = damp_state.drivers["WET"].total_distance_covered - 200.0
+    d_sft = damp_state.drivers["SFT"].total_distance_covered - 100.0
+    assert d_int > d_wet > d_sft
+
+    # Em pista molhada: WET > INTERMEDIATE > SOFT
+    wet_state = RaceState(
+        current_lap=2,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "WET": _make_driver("WET", position=1, tyre_compound=TyreCompound.WET),
+            "INT": _make_driver("INT", position=2, tyre_compound=TyreCompound.INTERMEDIATE),
+            "SFT": _make_driver("SFT", position=3, tyre_compound=TyreCompound.SOFT),
+        },
+    )
+    wet_state.drivers["WET"].total_distance_covered = 300.0
+    wet_state.drivers["INT"].total_distance_covered = 200.0
+    wet_state.drivers["SFT"].total_distance_covered = 100.0
+
+    tick(
+        wet_state,
+        delta_time=2.0,
+        track_length=4000.0,
+        rng=random.Random(1),
+        use_physics=True,
+        weather="molhado",
+    )
+    w_wet = wet_state.drivers["WET"].total_distance_covered - 300.0
+    w_int = wet_state.drivers["INT"].total_distance_covered - 200.0
+    w_sft = wet_state.drivers["SFT"].total_distance_covered - 100.0
+    assert w_wet > w_int > w_sft

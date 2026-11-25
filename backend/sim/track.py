@@ -194,7 +194,12 @@ class TrackMap:
         ultrapassagem, respeitando :data:`OVERTAKING_ZONE_PREFERENCE`.
         """
         d = distance_m % self.length_m if self.length_m > 0 else distance_m
-        tipos = OVERTAKING_ZONE_PREFERENCE if fallback else OVERTAKING_ZONE_PREFERENCE[:1]
+        has_explicit_spots = any(z.type == "overtaking_spot" for z in self.zones)
+        tipos = (
+            OVERTAKING_ZONE_PREFERENCE[:1]
+            if (has_explicit_spots or not fallback)
+            else OVERTAKING_ZONE_PREFERENCE
+        )
         for zone_type in tipos:
             for z in self.zones:
                 if z.type == zone_type and z.contains(d):
