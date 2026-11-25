@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import insert, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
 from db.models import (
@@ -216,8 +216,24 @@ def atualizar_status(
     corrida.status = status
     if status in ("finished", "aborted"):
         corrida.finished_at = finished_at or datetime.now(UTC)
+    else:
+        # Corrida que volta a rodar (reinício) deixa de ter um fim registrado.
+        corrida.finished_at = None
     session.flush()
     return corrida
+
+
+def limpar_historico(session: Session, race_id: uuid.UUID) -> None:
+    """Apaga as voltas e os eventos gravados, mantendo a corrida e o grid.
+
+    Usado quando a mesma corrida é simulada de novo (o cliente pede `restart` ou
+    reconecta): sem isso, a segunda simulação colidiria com a primeira na
+    unicidade de (`entry_id`, `lap_number`).
+    """
+    entradas = select(RaceEntry.id).where(RaceEntry.race_id == race_id)
+    session.execute(delete(LapRecord).where(LapRecord.entry_id.in_(entradas)))
+    session.execute(delete(RaceEvent).where(RaceEvent.race_id == race_id))
+    session.flush()
 
 
 @dataclass(frozen=True)

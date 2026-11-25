@@ -276,6 +276,36 @@ def test_todos_pilotos_finalizados_ignora_penultima_volta(race_state: RaceState)
     assert todos_pilotos_finalizados(race_state) is False
 
 
+def test_todos_pilotos_finalizados_quando_grid_abandona(race_state: RaceState):
+    """Sem nenhum piloto ativo a corrida termina (nada mais pode avançar)."""
+    for driver in race_state.drivers.values():
+        driver.is_retired = True
+    assert todos_pilotos_finalizados(race_state) is True
+
+
+def test_piloto_aposentado_vai_para_o_fim_sem_afetar_gaps(race_state: RaceState):
+    """Abandonos saem da classificação e não entram nos gaps dos ativos."""
+    # Cada carro percorre uma distância decrescente na ordem de grid.
+    for idx, driver in enumerate(race_state.drivers.values()):
+        driver.total_distance_covered = 10_000.0 - idx * 100.0
+        driver.current_lap = 2
+        driver.lap_time_sum = 200.0 + idx * 1.0
+    race_state.current_lap = 2
+
+    tick(race_state, delta_time=0.0, track_length=3337.0)
+
+    assert race_state.drivers["VER"].position == 1
+    assert race_state.drivers["PER"].gap_to_ahead == pytest.approx(1.0)
+
+    # PER abandona: vai para o fim da tabela e deixa de "existir" para os gaps.
+    race_state.drivers["PER"].is_retired = True
+    tick(race_state, delta_time=0.0, track_length=3337.0)
+
+    assert race_state.drivers["PER"].position == 20
+    assert race_state.drivers["HAM"].position == 2
+    assert race_state.drivers["HAM"].gap_to_ahead == pytest.approx(2.0)
+
+
 # ---------------------------------------------------------------------------
 # TESTE DE SERIALIZAÇÃO: Contrato D2 (lap_update)
 # ---------------------------------------------------------------------------
@@ -323,3 +353,220 @@ def test_format_lap_update_gera_envelope_valido(race_state: RaceState):
     ]
     for campo in campos_esperados:
         assert campo in p1, f"Campo {campo} ausente no piloto do envelope"
+
+
+# ---------------------------------------------------------------------------
+# TESTES DE FÍSICA M3: Degradação de Pneus, Carga de Combustível e DRS
+# ---------------------------------------------------------------------------
+
+
+def _make_driver(
+    driver_id: str,
+    name: str = "",
+    team: str = "Test Team",
+    position: int = 1,
+    base_velocity: float = 50.0,
+    tyre_compound: TyreCompound = TyreCompound.MEDIUM,
+    tyre_age: int = 0,
+    fuel_load: float = 110.0,
+) -> DriverState:
+    return DriverState(
+        driver_id=driver_id,
+        name=name or driver_id,
+        team=team,
+        position=position,
+        lap_distance_covered=0.0,
+        total_distance_covered=0.0,
+        current_lap=0,
+        last_lap_time=None,
+        gap_to_leader=0.0,
+        gap_to_ahead=None,
+        tyre_compound=tyre_compound,
+        tyre_age=tyre_age,
+        fuel_load=fuel_load,
+        pit_status=PitStatus.NONE,
+        pit_stops_made=0,
+        is_retired=False,
+        base_velocity=base_velocity,
+        lap_time_sum=0.0,
+        drs_active=False,
+    )
+
+
+def test_physics_tyre_degradation_reduces_speed():
+    """Comprova que pneus mais velhos resultam em menor velocidade efetiva (M3)."""
+    state = RaceState(
+        current_lap=1,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "FRESH": _make_driver(
+                "FRESH",
+                name="Fresh Tyres",
+                position=1,
+                base_velocity=50.0,
+                tyre_compound=TyreCompound.SOFT,
+                tyre_age=0,
+                fuel_load=50.0,
+            ),
+            "WORN": _make_driver(
+                "WORN",
+                name="Worn Tyres",
+                position=2,
+                base_velocity=50.0,
+                tyre_compound=TyreCompound.SOFT,
+                tyre_age=25,
+                fuel_load=50.0,
+            ),
+        },
+    )
+
+    tick(state, delta_time=1.0, track_length=4000.0, use_physics=True)
+
+    dist_fresh = state.drivers["FRESH"].lap_distance_covered
+    dist_worn = state.drivers["WORN"].lap_distance_covered
+    assert dist_fresh > dist_worn, (
+        "Piloto com pneus novos deve ser mais rápido que com pneus gastos"
+    )
+
+
+def test_physics_fuel_load_effect_and_burning():
+    """Garante que carro mais leve é mais rápido e que combustível queima continuamente."""
+    state = RaceState(
+        current_lap=1,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "HEAVY": _make_driver(
+                "HEAVY",
+                name="Heavy Car",
+                position=2,
+                base_velocity=50.0,
+                tyre_compound=TyreCompound.MEDIUM,
+                tyre_age=5,
+                fuel_load=110.0,
+            ),
+            "LIGHT": _make_driver(
+                "LIGHT",
+                name="Light Car",
+                position=1,
+                base_velocity=50.0,
+                tyre_compound=TyreCompound.MEDIUM,
+                tyre_age=5,
+                fuel_load=10.0,
+            ),
+        },
+    )
+
+    initial_heavy_fuel = state.drivers["HEAVY"].fuel_load
+    tick(state, delta_time=2.0, track_length=4000.0, use_physics=True)
+
+    assert state.drivers["LIGHT"].lap_distance_covered > state.drivers["HEAVY"].lap_distance_covered
+    assert state.drivers["HEAVY"].fuel_load < initial_heavy_fuel, (
+        "Combustível deve diminuir com a distância"
+    )
+
+
+def test_carro_no_pit_nao_bloqueia_o_carro_de_tras():
+    """Quem está no box corre em faixa separada e não entra no bloqueio."""
+    state = RaceState(
+        current_lap=1,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "PIT": _make_driver("PIT", position=1, base_velocity=50.0),
+            "TRACK": _make_driver("TRACK", position=2, base_velocity=50.0),
+        },
+    )
+    state.drivers["PIT"].pit_status = PitStatus.IN_PIT
+    state.drivers["PIT"].pit_time_remaining = 10.0
+
+    tick(state, delta_time=2.0, track_length=4000.0)
+
+    assert (
+        state.drivers["TRACK"].total_distance_covered > state.drivers["PIT"].total_distance_covered
+    )
+
+
+def test_carro_finalizado_nao_bloqueia_quem_ainda_corre():
+    """Após a bandeirada, o carro já finalizado não segura os demais."""
+    state = RaceState(
+        current_lap=1,
+        total_laps=1,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "FINISHED": _make_driver("FINISHED", position=1, base_velocity=50.0),
+            "RUNNING": _make_driver("RUNNING", position=2, base_velocity=50.0),
+        },
+    )
+    state.drivers["FINISHED"].current_lap = 1
+
+    tick(state, delta_time=2.0, track_length=4000.0)
+
+    assert state.drivers["RUNNING"].total_distance_covered > 0.0
+
+
+def test_physics_weather_crossover_in_damp_and_wet():
+    """Valida ordenamento de velocidade composto x clima no `tick()` (M4)."""
+    # Em pista úmida: INTERMEDIATE > WET > SOFT
+    damp_state = RaceState(
+        current_lap=2,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "INT": _make_driver("INT", position=1, tyre_compound=TyreCompound.INTERMEDIATE),
+            "WET": _make_driver("WET", position=2, tyre_compound=TyreCompound.WET),
+            "SFT": _make_driver("SFT", position=3, tyre_compound=TyreCompound.SOFT),
+        },
+    )
+    # Afasta os carros para que o bloqueio de fila não interfira na medição de ritmo.
+    damp_state.drivers["INT"].total_distance_covered = 300.0
+    damp_state.drivers["WET"].total_distance_covered = 200.0
+    damp_state.drivers["SFT"].total_distance_covered = 100.0
+
+    tick(
+        damp_state,
+        delta_time=2.0,
+        track_length=4000.0,
+        rng=random.Random(1),
+        use_physics=True,
+        weather="umido",
+    )
+    d_int = damp_state.drivers["INT"].total_distance_covered - 300.0
+    d_wet = damp_state.drivers["WET"].total_distance_covered - 200.0
+    d_sft = damp_state.drivers["SFT"].total_distance_covered - 100.0
+    assert d_int > d_wet > d_sft
+
+    # Em pista molhada: WET > INTERMEDIATE > SOFT
+    wet_state = RaceState(
+        current_lap=2,
+        total_laps=50,
+        elapsed_time=0.0,
+        track_status=TrackStatus.GREEN,
+        drivers={
+            "WET": _make_driver("WET", position=1, tyre_compound=TyreCompound.WET),
+            "INT": _make_driver("INT", position=2, tyre_compound=TyreCompound.INTERMEDIATE),
+            "SFT": _make_driver("SFT", position=3, tyre_compound=TyreCompound.SOFT),
+        },
+    )
+    wet_state.drivers["WET"].total_distance_covered = 300.0
+    wet_state.drivers["INT"].total_distance_covered = 200.0
+    wet_state.drivers["SFT"].total_distance_covered = 100.0
+
+    tick(
+        wet_state,
+        delta_time=2.0,
+        track_length=4000.0,
+        rng=random.Random(1),
+        use_physics=True,
+        weather="molhado",
+    )
+    w_wet = wet_state.drivers["WET"].total_distance_covered - 300.0
+    w_int = wet_state.drivers["INT"].total_distance_covered - 200.0
+    w_sft = wet_state.drivers["SFT"].total_distance_covered - 100.0
+    assert w_wet > w_int > w_sft

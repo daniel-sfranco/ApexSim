@@ -145,7 +145,7 @@ export const TimingTower: React.FC<TimingTowerProps> = ({
                     isLeader ? "text-amber-400 font-bold" : "text-slate-300"
                   }`}
                 >
-                  {formatGap(driver.gap_to_leader)}
+                  {isLeader ? "LÍDER" : formatGap(driver.gap_to_leader)}
                 </span>
               </div>
 

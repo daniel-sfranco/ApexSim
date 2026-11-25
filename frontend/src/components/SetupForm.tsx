@@ -28,11 +28,13 @@ export const SetupForm: React.FC = () => {
   const [weather, setWeather] = useState<WeatherCondition>(config.weather);
   const [trackTemp, setTrackTemp] = useState(config.trackTemp);
   const [grid, setGrid] = useState<string[]>(config.grid);
-  const [startingTyres, setStartingTyres] = useState<Record<string, TyreCompound>>(
-    config.initialStrategy || {}
-  );
+  const [startingTyres, setStartingTyres] = useState<
+    Record<string, TyreCompound>
+  >(config.initialStrategy || {});
   const [isStarting, setIsStarting] = useState(false);
-  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">(
+    "checking",
+  );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Checa status da API backend ao montar o componente
@@ -110,31 +112,46 @@ export const SetupForm: React.FC = () => {
     reorderGrid(grid);
     resetRace();
 
-    let targetRaceId = "race-" + Math.random().toString(36).substring(2, 9);
-
-    const requestBody: CreateRaceRequest = {
-      circuit_id: selectedCircuit,
-      total_laps: Number(totalLaps),
-      seed: Number(seed),
-      weather,
-      track_temp: Number(trackTemp),
-      grid,
-      initial_tyres: startingTyres,
-    };
-
+    // Cria a corrida no backend e usa o `race_id` devolvido: é ele que permite ao
+    // WebSocket carregar circuito, voltas e clima gravados pela API. Se a API
+    // estiver indisponível, cai no modo memória com um id local.
+    let raceId = "race-" + Math.random().toString(36).substring(2, 9);
     try {
-      // Dispara criação oficial da corrida na API do ApexSim
-      const apiResponse = await createRace(requestBody);
-      if (apiResponse && apiResponse.race_id) {
-        targetRaceId = apiResponse.race_id;
-        console.log(`[SetupForm] Corrida criada no backend com ID: ${targetRaceId}`);
+      const apiUrl =
+        (import.meta as any).env?.VITE_API_URL || "http://localhost:8000";
+      const resposta = await fetch(`${apiUrl}/api/races`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          circuit_id: selectedCircuit,
+          total_laps: totalLaps,
+          seed,
+          weather,
+          track_temp: trackTemp,
+          grid,
+          // Apenas pilotos presentes no grid, como exige o contrato da API.
+          initial_tyres: Object.fromEntries(
+            Object.entries(startingTyres).filter(([code]) =>
+              grid.includes(code),
+            ),
+          ),
+        }),
+      });
+      if (resposta.ok) {
+        const dados = await resposta.json();
+        if (typeof dados?.race_id === "string" && dados.race_id) {
+          raceId = dados.race_id;
+        }
+      } else {
+        console.warn(
+          `[SetupForm] POST /api/races falhou (${resposta.status}); usando corrida em memória`,
+        );
       }
-    } catch (err: any) {
+    } catch (erro) {
       console.warn(
-        `[SetupForm] API backend não respondeu (iniciando em modo local):`,
-        err?.message || err
+        "[SetupForm] API indisponível; usando corrida em memória",
+        erro,
       );
-      setStatusMessage("API backend offline ou indisponível. Iniciando cockpit em modo de simulação autônoma...");
     }
 
     setTimeout(() => {
@@ -143,12 +160,17 @@ export const SetupForm: React.FC = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 font-sans max-w-6xl mx-auto">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-8 font-sans max-w-6xl mx-auto"
+    >
       {/* Indicador de Status da API */}
       <div className="flex items-center justify-between bg-f1-surface border border-f1-border rounded-lg px-4 py-2.5 text-xs font-mono">
         <div className="flex items-center gap-2">
           <Server className="w-4 h-4 text-f1-muted" />
-          <span className="text-slate-300 font-semibold">Status do Servidor API:</span>
+          <span className="text-slate-300 font-semibold">
+            Status do Servidor API:
+          </span>
           {apiStatus === "checking" && (
             <span className="text-amber-400 flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
@@ -312,7 +334,8 @@ export const SetupForm: React.FC = () => {
         </div>
 
         <p className="text-xs text-f1-muted mb-4 font-mono">
-          Reordene os pilotos para a largada e escolha o composto inicial de cada um (Soft, Medium, Hard).
+          Reordene os pilotos para a largada e escolha o composto inicial de
+          cada um (Soft, Medium, Hard).
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono">
@@ -407,7 +430,9 @@ export const SetupForm: React.FC = () => {
           disabled={isStarting}
           className="flex items-center gap-2 px-8 py-3.5 rounded-lg bg-f1-red hover:bg-red-700 text-white font-mono font-bold tracking-wider uppercase text-sm shadow-xl shadow-f1-red/25 hover:shadow-f1-red/40 transition-all cursor-pointer disabled:opacity-50"
         >
-          {isStarting ? "Inicializando Simulação..." : "Iniciar Simulação no Cockpit"}
+          {isStarting
+            ? "Inicializando Simulação..."
+            : "Iniciar Simulação no Cockpit"}
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

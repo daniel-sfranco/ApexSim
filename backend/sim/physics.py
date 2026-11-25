@@ -22,39 +22,40 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from app.models.track import TrackMap
+    from sim.track import TrackMap
 
-Compound = Literal["soft", "medium", "hard"]
+Compound = Literal["soft", "medium", "hard", "intermediate", "wet"]
 
 
 @dataclass(frozen=True)
 class TyreParams:
-    """Coeficientes por composto. Fonte: docs/fisica.md, Secao 1.3.
+    """Coeficientes por composto. Fonte: docs/fisica.md, Secao 1.3 e 6.4.
 
-    Os coeficientes polinomiais (k1_quad, k2_lin) sao calibrados a partir do
-    dataset Kaggle/FastF1 2023-2024 (entrega D5, curvas_degradacao.json).
-    Os parametros de cliff (cliff_age, cliff_delta, cliff_beta) sao HIPOTESE
-    DE MODELAGEM SEM DADO EMPIRICO: na faixa observada (ate 19 voltas no Soft,
-    29 no Medium e 41 no Hard) nenhum cliff foi detectado (cliff: null), pois
-    as equipes realizam o pit stop antes.
+    - Slicks (soft, medium, hard): k1_quad e k2_lin calibrados no dataset
+      Kaggle/FastF1 2023-2024 (entrega D5, curvas_degradacao.json).
+    - Chuva (intermediate, wet): k2_lin de referencia de literatura (~0.060 e
+      ~0.035 s/volta, Mintlify F1 ML [29], docs/fisica.md Secao 6.4), com k1_quad = 0.0
+      por ausencia de ajuste quadratico no dataset D5.
+    - Parametros de cliff (cliff_age, cliff_delta, cliff_beta) de TODOS os compostos
+      sao HIPOTESE DE MODELAGEM SEM DADO EMPIRICO: na faixa observada do D5 (ate 19v
+      no Soft, 29v no Medium e 41v no Hard) nenhum cliff foi detectado (cliff: null).
     """
 
-    k1_quad: float  # s/volta^2 - calibrado no Kaggle 2023-2024 (D5)
-    k2_lin: float  # s/volta   - degradacao linear calibrada no Kaggle 2023-2024 (D5)
-    cliff_age: float  # voltas   - idade do cliff (hipotese sem dado, acima da faixa medida)
+    k1_quad: float  # s/volta^2 - calibrado no D5 (slicks) ou 0.0 (chuva)
+    k2_lin: float  # s/volta   - degradacao linear (D5 para slicks; [29] para chuva)
+    cliff_age: float  # voltas   - idade do cliff (hipotese sem dado empirico)
     cliff_delta: float  # s      - magnitude do salto no cliff (hipotese sem dado)
     cliff_beta: float  # 1/volta - inclinacao da transicao logistica (hipotese sem dado)
 
 
-# k1_quad e k2_lin calibrados em data/curvas_degradacao/curvas_degradacao.json
+# k1_quad e k2_lin dos slicks calibrados em data/curvas_degradacao/curvas_degradacao.json
 # (39.966 voltas limpas, 44 GPs, idade_max_suportada: Soft=19, Medium=29, Hard=41).
 # Nota: na faixa medida, o Hard apresenta degradacao superior ao Medium (ex.: idade 15:
 # 0,80 s vs. 0,46 s); a hierarquia classica Soft > Medium > Hard e uma escolha de
 # modelagem que se manifesta na vida util ate o cliff (25 < 35 < 47 voltas).
-# Os parametros cliff_age (25.0, 35.0, 47.0), cliff_delta e cliff_beta sao hipoteses
-# sem dado empirico posicionadas acima de idade_max_suportada para preservar a
-# aderencia ao IC 95% medido em toda a regiao observada.
-TYRE_TABLE: dict[Compound, TyreParams] = {
+# Para intermediate e wet, k2_lin segue [29] (0.060 e 0.035 s/volta) e os parametros de
+# cliff sao hipoteses sem dado empirico.
+TYRE_TABLE: dict[str, TyreParams] = {
     "soft": TyreParams(
         k1_quad=0.002412, k2_lin=0.008639, cliff_age=25.0, cliff_delta=1.2, cliff_beta=0.9
     ),
@@ -63,6 +64,12 @@ TYRE_TABLE: dict[Compound, TyreParams] = {
     ),
     "hard": TyreParams(
         k1_quad=0.0, k2_lin=0.051181, cliff_age=47.0, cliff_delta=0.5, cliff_beta=0.5
+    ),
+    "intermediate": TyreParams(
+        k1_quad=0.0, k2_lin=0.060000, cliff_age=30.0, cliff_delta=0.9, cliff_beta=0.7
+    ),
+    "wet": TyreParams(
+        k1_quad=0.0, k2_lin=0.035000, cliff_age=35.0, cliff_delta=0.8, cliff_beta=0.6
     ),
 }
 
@@ -88,14 +95,28 @@ def _temp_penalty(track_temp: float) -> float:
     return 0.0
 
 
-def tyre_time_loss(compound: Compound, age_laps: int, track_temp: float = 35.0) -> float:
+def normalize_compound_name(compound: object, *, default: str | None = None) -> str:
+    """Normaliza nome ou Enum de composto para minúsculas (`soft`..`wet`)."""
+    raw = getattr(compound, "name", None)
+    text = raw if isinstance(raw, str) else str(compound)
+    c = text.lower().strip()
+    if "." in c:
+        c = c.split(".")[-1]
+    if c == "inter":
+        c = "intermediate"
+    if c in TYRE_TABLE:
+        return c
+    return default if default is not None else c
+
+
+def tyre_time_loss(compound: Compound | str, age_laps: int, track_temp: float = 35.0) -> float:
     """Perda de tempo (s) em relacao ao pneu novo, na temperatura ideal.
 
     Equacao (docs/fisica.md Sec. 1.1):
         t_tire(a,c) = k1_quad*a^2 + k2_lin*a + cliff(a,c) + temp_penalty(T)
 
     Args:
-        compound: "soft" | "medium" | "hard"
+        compound: "soft" | "medium" | "hard" | "intermediate" | "wet"
         age_laps: idade do pneu em voltas (>= 0)
         track_temp: temperatura de pista em graus Celsius
 
@@ -104,17 +125,20 @@ def tyre_time_loss(compound: Compound, age_laps: int, track_temp: float = 35.0) 
     """
     if age_laps < 0:
         raise ValueError("age_laps deve ser >= 0")
-    if compound not in TYRE_TABLE:
-        raise ValueError(f"composto desconhecido: {compound}")
 
-    p = TYRE_TABLE[compound]
+    c = normalize_compound_name(compound)
+    if c not in TYRE_TABLE:
+        expected = list(TYRE_TABLE.keys())
+        raise ValueError(f"composto desconhecido: '{compound}'. Esperados: {expected}")
+
+    p = TYRE_TABLE[c]
     quad_term = p.k1_quad * age_laps**2 + p.k2_lin * age_laps
     cliff = _cliff_term(age_laps, p)
     temp_pen = _temp_penalty(track_temp)
     return quad_term + cliff + temp_pen
 
 
-def tyre_grip(compound: Compound, age_laps: int, track_temp: float = 35.0) -> float:
+def tyre_grip(compound: Compound | str, age_laps: int, track_temp: float = 35.0) -> float:
     """Fator de aderencia normalizado (1.0 = grip maximo de pneu novo).
 
     grip(a,c) = 1 / (1 + t_tire(a,c) / tau)

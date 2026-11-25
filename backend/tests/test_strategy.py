@@ -170,6 +170,66 @@ class TestReactiveLayers:
         assert decision.target_compound in ("soft", "medium", "hard")
         assert decision.reason == "WEATHER"
 
+    def test_crossover_climatico_umido_troca_para_intermediario(self, heuristic):
+        """Transição seco -> úmido força troca imediata de slick para intermediate."""
+        driver = {
+            "team": "Ferrari",
+            "tyre_compound": "medium",
+            "tyre_age": 5,
+            "current_lap": 12,
+        }
+        race = {"current_lap": 12, "total_laps": 50, "track_status": "GREEN", "weather": "damp"}
+        decision = heuristic.evaluate_driver(driver, race, 21.0, _calc_deg)
+        assert decision.should_pit is True
+        assert decision.target_compound == "intermediate"
+        assert decision.reason == "WEATHER"
+
+    def test_crossover_climatico_intermediario_e_wet_entre_chuvas(self, heuristic):
+        """Intermediário troca para Wet em chuva forte e Wet troca para Inter no úmido."""
+        driver_inter = {
+            "team": "McLaren",
+            "tyre_compound": "intermediate",
+            "tyre_age": 4,
+            "current_lap": 15,
+        }
+        race_wet = {"current_lap": 15, "total_laps": 50, "track_status": "GREEN", "weather": "wet"}
+        dec_to_wet = heuristic.evaluate_driver(driver_inter, race_wet, 21.0, _calc_deg)
+        assert dec_to_wet.should_pit is True
+        assert dec_to_wet.target_compound == "wet"
+        assert dec_to_wet.reason == "WEATHER"
+
+        # Faltando poucas voltas, não vale pagar pit stop apenas para trocar inter -> wet
+        race_wet_end = {
+            "current_lap": 47,
+            "total_laps": 50,
+            "track_status": "GREEN",
+            "weather": "wet",
+        }
+        dec_stay = heuristic.evaluate_driver(driver_inter, race_wet_end, 21.0, _calc_deg)
+        assert dec_stay.should_pit is False
+
+        # Wet em pista úmida com muitas voltas restantes troca para intermediário
+        driver_wet = {
+            "team": "Red Bull",
+            "tyre_compound": "wet",
+            "tyre_age": 6,
+            "current_lap": 20,
+        }
+        race_damp = {
+            "current_lap": 20,
+            "total_laps": 50,
+            "track_status": "GREEN",
+            "weather": "damp",
+        }
+        dec_to_inter = heuristic.evaluate_driver(driver_wet, race_damp, 21.0, _calc_deg)
+        assert dec_to_inter.should_pit is True
+        assert dec_to_inter.target_compound == "intermediate"
+        assert dec_to_inter.reason == "WEATHER"
+
+        # Intermediário já em pista úmida permanece na pista
+        dec_inter_ok = heuristic.evaluate_driver(driver_inter, race_damp, 21.0, _calc_deg)
+        assert dec_inter_ok.should_pit is False
+
     def test_safety_car_antecipa_parada(self, heuristic):
         """Safety Car reduz o custo da parada em ~45% e antecipa paradas de pilotos na janela."""
         driver = {

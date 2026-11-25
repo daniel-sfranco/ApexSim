@@ -1666,6 +1666,30 @@
         "speed_limit_kmh": 80,
         "time_loss_s": 21
       }
+    },
+    {
+      "type": "overtaking_spot",
+      "start_m": 240,
+      "end_m": 370,
+      "props": {
+        "difficulty": "baixa"
+      }
+    },
+    {
+      "type": "overtaking_spot",
+      "start_m": 1280,
+      "end_m": 1410,
+      "props": {
+        "difficulty": "baixa"
+      }
+    },
+    {
+      "type": "overtaking_spot",
+      "start_m": 2700,
+      "end_m": 2770,
+      "props": {
+        "difficulty": "alta"
+      }
     }
   ]
 }
