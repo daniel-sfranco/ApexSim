@@ -66,19 +66,33 @@ class PitStrategyHeuristic:
         """Obtém o nível de agressividade da equipe (default 0.5 se não especificado)."""
         return self.team_aggression.get(team, DEFAULT_AGGRESSION)
 
+    @staticmethod
+    def _normalize_weather(weather: str) -> str:
+        """Normaliza o clima (EN/PT) para 'dry', 'damp' ou 'wet'."""
+        w = str(weather).strip().lower()
+        if w in ("wet", "molhado"):
+            return "wet"
+        if w in ("damp", "umido", "úmido"):
+            return "damp"
+        return "dry"
+
     def _select_target_compound(
         self, current_compound: str, laps_remaining: int, weather: str = "dry"
     ) -> str:
         """Seleciona o próximo composto com base no clima, voltas e regra FIA de alternância.
 
-        Regras aplicadas (Passo 4):
-        1. Se pista molhada: pneu de chuva ("wet").
-        2. Se pista seca: escolhe a melhor durabilidade para as voltas restantes
+        Regras aplicadas (Passo 4 / M4):
+        1. Se pista molhada: pneu de chuva extrema ("wet").
+        2. Se pista úmida: pneu intermediário ("intermediate").
+        3. Se pista seca: escolhe a melhor durabilidade para as voltas restantes
            (<=15 soft, <=30 medium, >30 hard).
-        3. Não repete o mesmo composto consecutivamente no seco (ex: troca Médio por Duro/Macio).
+        4. Não repete o mesmo composto consecutivamente no seco (ex: troca Médio por Duro/Macio).
         """
-        if weather == "wet":
+        norm_weather = self._normalize_weather(weather)
+        if norm_weather == "wet":
             return "wet"
+        if norm_weather == "damp":
+            return "intermediate"
 
         # Janela de durabilidade ideal para voltas restantes
         if laps_remaining <= 15:
@@ -146,6 +160,8 @@ class PitStrategyHeuristic:
             if hasattr(compound_raw, "name")
             else str(compound_raw).lower()
         )
+        if compound == "inter":
+            compound = "intermediate"
         tyre_age = int(get_d("tyre_age", get_d("tyre_age_laps", 0)))
 
         # Metadados de corrida
@@ -158,7 +174,7 @@ class PitStrategyHeuristic:
         track_status_str = (
             track_status.name if hasattr(track_status, "name") else str(track_status).upper()
         )
-        weather = str(get_r("weather", "dry")).lower()
+        weather = self._normalize_weather(get_r("weather", "dry"))
 
         # Seleção do composto alvo para a parada
         target_compound = self._select_target_compound(compound, laps_remaining, weather)
@@ -180,12 +196,18 @@ class PitStrategyHeuristic:
                 )
 
         # -------------------------------------------------------------------
-        # Prioridade 2: Crossover Climático
+        # Prioridade 2: Crossover Climático (seco <-> úmido <-> molhado)
         # -------------------------------------------------------------------
         is_slick = compound in ("soft", "medium", "hard")
-        if weather == "wet" and is_slick:
-            return PitDecision(should_pit=True, target_compound="wet", reason="WEATHER")
-        if weather == "dry" and not is_slick:
+        if weather == "wet":
+            if is_slick or (compound == "intermediate" and laps_remaining > 5):
+                return PitDecision(should_pit=True, target_compound="wet", reason="WEATHER")
+        elif weather == "damp":
+            if is_slick or (compound == "wet" and laps_remaining > 6):
+                return PitDecision(
+                    should_pit=True, target_compound="intermediate", reason="WEATHER"
+                )
+        elif weather == "dry" and not is_slick:
             target_dry = self._select_target_compound(compound, laps_remaining, "dry")
             return PitDecision(should_pit=True, target_compound=target_dry, reason="WEATHER")
 

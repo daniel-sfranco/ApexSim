@@ -23,8 +23,10 @@ from sim.physics import (
     drs_zone_time_gain,
     fuel_time_delta,
     is_drs_eligible,
+    normalize_compound_name,
     tyre_time_loss,
 )
+from sim.weather import normalize_weather_state, weather_time_delta
 
 if TYPE_CHECKING:
     from sim.track import TrackMap
@@ -176,11 +178,13 @@ def tick(
     laps_since_restart: int = 2,
     is_wet: bool = False,
     pit_speed_limit_ms: float | None = None,
+    weather: str | None = None,
 ) -> RaceState:
-    """Avança a simulação em um passo de tempo (tick) aplicando a física M3.
+    """Avança a simulação em um passo de tempo (tick) aplicando a física M3/M4.
 
     Calcula a velocidade efetiva de cada carro modulada por:
-    - Degradação de pneus (curvas calibradas de tyre_time_loss).
+    - Degradação de pneus (curvas calibradas de tyre_time_loss, slicks e chuva).
+    - Interação climática composto x condição de pista (weather_time_delta).
     - Queima de combustível (fuel_time_delta e redução de ~1.6 kg/volta).
     - Efeito aerodinâmico de ar sujo para carros colados (< 3.0s).
     - Ativação de DRS em zonas do TrackMap quando elegível (< 1.0s).
@@ -208,12 +212,21 @@ def tick(
         is_wet: Pista úmida/molhada desabilita o DRS.
         pit_speed_limit_ms: Limite de velocidade do pit lane em m/s. Quando omitido,
             é lido da zona `pit_lane` do TrackMap (Contrato D4) ou usa 22.2 m/s.
+        weather: Estado climático da pista (`seco`/`umido`/`molhado` ou `DRY`/`DAMP`/`WET`).
+            Se omitido, deriva de `is_wet` (`molhado` se True, `seco` se False).
     """
     state.elapsed_time += delta_time
     rand_gauss = rng.gauss if rng is not None else random.gauss
 
     if pit_speed_limit_ms is None:
         pit_speed_limit_ms = track_map.pit_speed_limit_ms() if track_map is not None else 22.2
+
+    if weather is not None:
+        weather_state = normalize_weather_state(weather, default="seco")
+        pista_molhada = weather_state != "seco" or is_wet
+    else:
+        weather_state = "molhado" if is_wet else "seco"
+        pista_molhada = is_wet
 
     voltas_concluidas: list[tuple[DriverState, int, float]] = []
     lider_bandeirado = state.current_lap >= state.total_laps
@@ -244,18 +257,17 @@ def tick(
             driver.incident_time_remaining -= tempo_parado
             tempo_movimento = delta_time - tempo_parado
 
-        # 2) Cálculo de velocidade efetiva com modelo de física M3
+        # 2) Cálculo de velocidade efetiva com modelo de física M3/M4
         if use_physics:
             # Tempo de referência base do circuito
             t_base = track_length / max(1.0, driver.base_velocity)
 
-            # Composto
-            comp_name = driver.tyre_compound.name.lower()
-            if comp_name not in ("soft", "medium", "hard"):
-                comp_name = "medium"
+            # Composto (slicks e pneus de chuva)
+            comp_name = normalize_compound_name(driver.tyre_compound, default="medium")
 
             # Perdas/ganhos físicos de tempo de volta (docs/fisica.md)
-            t_tyre = tyre_time_loss(comp_name, driver.tyre_age, track_temp)  # type: ignore[arg-type]
+            t_tyre = tyre_time_loss(comp_name, driver.tyre_age, track_temp)
+            t_weather = weather_time_delta(comp_name, weather_state)
             t_fuel = fuel_time_delta(driver.fuel_load)
             t_dirty = dirty_air_time_delta(driver.gap_to_ahead)
 
@@ -267,7 +279,7 @@ def tick(
                     driver.gap_to_ahead,
                     current_lap=driver.current_lap,
                     track_status=state.track_status.name,
-                    is_wet=is_wet,
+                    is_wet=pista_molhada,
                     laps_since_restart=laps_since_restart,
                 )
                 driver.drs_active = drs_zone is not None and drs_ok
@@ -284,7 +296,10 @@ def tick(
             elif state.track_status == TrackStatus.YELLOW:
                 sc_factor = 1.25  # VSC
 
-            t_effective = max(10.0, (t_base + t_tyre + t_fuel + t_dirty - drs_gain) * sc_factor)
+            t_effective = max(
+                10.0,
+                (t_base + t_tyre + t_weather + t_fuel + t_dirty - drs_gain) * sc_factor,
+            )
             v_eff = track_length / t_effective
         else:
             v_eff = driver.base_velocity

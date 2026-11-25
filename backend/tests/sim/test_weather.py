@@ -5,7 +5,9 @@ import pytest
 from sim.weather import (
     DEFAULT_TRANSITION_PROBABILITIES,
     WeatherSimulator,
+    normalize_weather_state,
     weather_grip_factor,
+    weather_state_to_contract,
     weather_time_delta,
 )
 
@@ -85,3 +87,15 @@ class TestWeatherCompoundCrossover:
     def test_invalid_weather_state_raises(self):
         with pytest.raises(ValueError):
             weather_time_delta("soft", "neve")
+
+    def test_contract_d2_weather_aliases(self):
+        assert normalize_weather_state("DRY") == "seco"
+        assert normalize_weather_state("DAMP") == "umido"
+        assert normalize_weather_state("WET") == "molhado"
+        assert weather_state_to_contract("seco") == "DRY"
+        assert weather_state_to_contract("umido") == "DAMP"
+        assert weather_state_to_contract("molhado") == "WET"
+        assert weather_time_delta("intermediate", "DAMP") == weather_time_delta(
+            "intermediate", "umido"
+        )
+        assert weather_grip_factor("wet", "WET") == weather_grip_factor("wet", "molhado")

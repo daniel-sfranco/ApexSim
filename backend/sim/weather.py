@@ -25,57 +25,54 @@ Distinção explícita entre Literatura/Regulamento e Hipóteses de Modelagem:
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
+
+from sim.physics import normalize_compound_name
 
 WeatherState = Literal["seco", "umido", "molhado"]
 
-# HIPÓTESE DE MODELAGEM (docs/fisica.md Seção 6.4 — ausência de matriz FIA publicada):
-# Matriz de transição por volta para cenário de clima instável.
-# Linhas: estado atual (seco, umido, molhado) -> Colunas: próximo estado.
+# Matriz de transição por volta para corrida de tempo instável (docs/fisica.md Seção 6.4).
 DEFAULT_TRANSITION_PROBABILITIES: dict[WeatherState, dict[WeatherState, float]] = {
     "seco": {"seco": 0.95, "umido": 0.04, "molhado": 0.01},
     "umido": {"seco": 0.20, "umido": 0.65, "molhado": 0.15},
     "molhado": {"seco": 0.02, "umido": 0.23, "molhado": 0.75},
 }
 
-# HIPÓTESE DE MODELAGEM: proxy discreto de severidade de água theta in [0.0, 1.0] por estado
+# Severidade nominal de água na pista theta in [0.0, 1.0].
 NOMINAL_TRACK_WETNESS: dict[WeatherState, float] = {
     "seco": 0.0,
     "umido": 0.40,
     "molhado": 0.85,
 }
 
-# Penalidade de ritmo (s/volta adicionais em relação ao slick em pista seca).
-# - O valor de +3.0 s para 'wet' em pista 'molhado' vem de [29] (docs/fisica.md Seção 6.4).
-# - Todos os demais valores fora da diagonal são HIPÓTESES DE MODELAGEM escolhidas para
-#   garantir o crossover físico entre Slick, Intermediate e Full Wet (Seção 6.2).
+# Penalidade de ritmo (s/volta adicionais vs. slick no seco).
+# O valor de +3.0 s para 'wet' em 'molhado' vem de [29]; os demais garantem o crossover.
 WEATHER_COMPOUND_TIME_PENALTIES: dict[WeatherState, dict[str, float]] = {
     "seco": {
         "soft": 0.0,
         "medium": 0.0,
         "hard": 0.0,
-        "intermediate": 3.6,  # hipótese: superaquecimento e menor área de contato no seco
-        "wet": 7.8,  # hipótese: blocos altos e rápida degradação térmica no seco
+        "intermediate": 3.6,
+        "wet": 7.8,
     },
     "umido": {
-        "soft": 5.5,  # hipótese: perda de aderência em lâmina d'água fina
-        "medium": 6.0,  # hipótese
-        "hard": 7.0,  # hipótese: composto duro esfria e perde janela térmica
-        "intermediate": 1.2,  # hipótese: composto ótimo na janela úmida (crossover)
-        "wet": 4.5,  # hipótese: excesso de drenagem / menor grip mecânico que Inter
+        "soft": 5.5,
+        "medium": 6.0,
+        "hard": 7.0,
+        "intermediate": 1.2,
+        "wet": 4.5,
     },
     "molhado": {
-        "soft": 18.0,  # hipótese: aquaplanagem severa com pneu liso
-        "medium": 19.5,  # hipótese
-        "hard": 22.0,  # hipótese
-        "intermediate": 6.8,  # hipótese: saturação da capacidade de drenagem do Inter
-        "wet": 3.0,  # literatura [29]: +3,0 s/volta ref. base em chuva forte
+        "soft": 18.0,
+        "medium": 19.5,
+        "hard": 22.0,
+        "intermediate": 6.8,
+        "wet": 3.0,
     },
 }
 
-# HIPÓTESE DE MODELAGEM: multiplicador de aderência mecânica [0.1, 1.0] derivado de
-# forma monotônica às penalidades acima (usado para modular risco de incidente em events.py).
+# Multiplicador de aderência mecânica [0.1, 1.0] usado na taxa de incidentes em events.py.
 WEATHER_COMPOUND_GRIP: dict[WeatherState, dict[str, float]] = {
     "seco": {
         "soft": 1.0,
@@ -101,29 +98,52 @@ WEATHER_COMPOUND_GRIP: dict[WeatherState, dict[str, float]] = {
 }
 
 
-def normalize_compound_name(compound: str) -> str:
-    """Normaliza o nome do composto para minúsculas e remove prefixos de Enum."""
-    c = compound.lower().strip()
-    if "." in c:
-        c = c.split(".")[-1]
-    if c in ("soft", "medium", "hard", "intermediate", "wet"):
-        return c
-    if c == "inter":
-        return "intermediate"
-    return c
+WEATHER_ALIAS_TO_STATE: dict[str, WeatherState] = {
+    "seco": "seco",
+    "dry": "seco",
+    "umido": "umido",
+    "úmido": "umido",
+    "damp": "umido",
+    "molhado": "molhado",
+    "wet": "molhado",
+}
+
+WEATHER_STATE_TO_CONTRACT: dict[WeatherState, str] = {
+    "seco": "DRY",
+    "umido": "DAMP",
+    "molhado": "WET",
+}
+
+
+def normalize_weather_state(
+    weather: WeatherState | str,
+    *,
+    default: WeatherState | None = None,
+) -> WeatherState:
+    """Normaliza estados climáticos PT/D2 (`DRY`/`DAMP`/`WET` ou `seco`/`umido`/`molhado`)."""
+    key = str(weather).lower().strip()
+    resolved = WEATHER_ALIAS_TO_STATE.get(key)
+    if resolved is not None:
+        return resolved
+    if default is not None:
+        return default
+    raise ValueError(
+        f"Estado climático desconhecido: '{weather}'. "
+        "Esperado: 'seco'/'DRY', 'umido'/'DAMP' ou 'molhado'/'WET'."
+    )
+
+
+def weather_state_to_contract(weather_state: WeatherState | str) -> str:
+    """Converte o estado climático interno para o enum do Contrato D2 (`DRY`/`DAMP`/`WET`)."""
+    return WEATHER_STATE_TO_CONTRACT[normalize_weather_state(weather_state)]
 
 
 def weather_time_delta(compound: str, weather_state: WeatherState | str) -> float:
     """Retorna segundos adicionais de tempo de volta pela interação composto x clima."""
-    state_key = weather_state.lower().strip()
-    if state_key not in WEATHER_COMPOUND_TIME_PENALTIES:
-        raise ValueError(
-            f"Estado climático desconhecido: '{weather_state}'. "
-            "Esperado: 'seco', 'umido' ou 'molhado'."
-        )
+    state_key = normalize_weather_state(weather_state)
 
     c_norm = normalize_compound_name(compound)
-    penalties = WEATHER_COMPOUND_TIME_PENALTIES[state_key]  # type: ignore[index]
+    penalties = WEATHER_COMPOUND_TIME_PENALTIES[state_key]
     if c_norm not in penalties:
         raise ValueError(
             f"Composto desconhecido: '{compound}'. Esperado: soft, medium, hard, intermediate, wet."
@@ -134,15 +154,10 @@ def weather_time_delta(compound: str, weather_state: WeatherState | str) -> floa
 
 def weather_grip_factor(compound: str, weather_state: WeatherState | str) -> float:
     """Retorna o multiplicador de aderência [0.1, 1.0] pela interação composto x clima."""
-    state_key = weather_state.lower().strip()
-    if state_key not in WEATHER_COMPOUND_GRIP:
-        raise ValueError(
-            f"Estado climático desconhecido: '{weather_state}'. "
-            "Esperado: 'seco', 'umido' ou 'molhado'."
-        )
+    state_key = normalize_weather_state(weather_state)
 
     c_norm = normalize_compound_name(compound)
-    grips = WEATHER_COMPOUND_GRIP[state_key]  # type: ignore[index]
+    grips = WEATHER_COMPOUND_GRIP[state_key]
     if c_norm not in grips:
         raise ValueError(
             f"Composto desconhecido: '{compound}'. Esperado: soft, medium, hard, intermediate, wet."
@@ -156,11 +171,9 @@ class WeatherSimulator:
     """Simulador climático dinâmico por Cadeia de Markov (docs/fisica.md Seção 6.1)."""
 
     current_state: WeatherState = "seco"
-    transition_probs: dict[WeatherState, dict[WeatherState, float]] | None = None
-
-    def __post_init__(self) -> None:
-        if self.transition_probs is None:
-            self.transition_probs = DEFAULT_TRANSITION_PROBABILITIES
+    transition_probs: dict[WeatherState, dict[WeatherState, float]] = field(
+        default_factory=lambda: DEFAULT_TRANSITION_PROBABILITIES
+    )
 
     @property
     def wetness(self) -> float:
@@ -170,13 +183,8 @@ class WeatherSimulator:
     def advance_lap(self, rng: random.Random | None = None) -> WeatherState:
         """Avança uma volta na cadeia de Markov usando o gerador `rng`."""
         r = rng if rng is not None else random.Random()
-        assert self.transition_probs is not None
         row = self.transition_probs[self.current_state]
-
-        states = list(row.keys())
-        probs = list(row.values())
-
-        next_state = r.choices(states, weights=probs, k=1)[0]
+        next_state = r.choices(list(row.keys()), weights=list(row.values()), k=1)[0]
         self.current_state = next_state
         return self.current_state
 

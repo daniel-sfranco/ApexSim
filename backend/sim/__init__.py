@@ -16,7 +16,13 @@ from .state import (
     tick,
 )
 from .track import TrackMap, Zone
-from .weather import WeatherSimulator, weather_grip_factor, weather_time_delta
+from .weather import (
+    WeatherSimulator,
+    normalize_weather_state,
+    weather_grip_factor,
+    weather_state_to_contract,
+    weather_time_delta,
+)
 
 __all__ = [
     "RaceEngine",
@@ -39,6 +45,8 @@ __all__ = [
     "RaceIncident",
     "SafetyCarStateMachine",
     "WeatherSimulator",
+    "normalize_weather_state",
     "weather_grip_factor",
+    "weather_state_to_contract",
     "weather_time_delta",
 ]

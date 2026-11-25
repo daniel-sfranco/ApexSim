@@ -32,8 +32,9 @@ import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sim.physics import fuel_time_delta, tyre_time_loss
-from sim.state import DriverState, PitStatus, RaceState, TrackStatus, TyreCompound
+from sim.physics import fuel_time_delta, normalize_compound_name, tyre_time_loss
+from sim.state import DriverState, PitStatus, RaceState, TrackStatus
+from sim.weather import normalize_weather_state, weather_time_delta
 
 if TYPE_CHECKING:
     from sim.track import TrackMap
@@ -189,22 +190,28 @@ def overtake_probability(
 
 
 def compound_name(driver: DriverState) -> str:
-    """Nome do composto no vocabulário das funções de física (slick apenas)."""
-    composto = driver.tyre_compound
-    name = composto.name.lower() if isinstance(composto, TyreCompound) else str(composto).lower()
-    return name if name in ("soft", "medium", "hard") else "medium"
+    """Nome do composto no vocabulário das funções de física (slicks e chuva)."""
+    return normalize_compound_name(driver.tyre_compound, default="medium")
 
 
-def estimate_lap_time(driver: DriverState, track_length: float, track_temp: float) -> float:
+def estimate_lap_time(
+    driver: DriverState,
+    track_length: float,
+    track_temp: float,
+    weather: str = "seco",
+) -> float:
     """Proxy do tempo de volta do piloto no tick atual (s).
 
-    Espelha a composição usada por `sim.state.tick()` (base + pneu + combustível),
+    Espelha a composição usada por `sim.state.tick()` (base + pneu + clima + combustível),
     sem ar sujo nem DRS: aqui interessa o ritmo intrínseco de cada carro.
     """
     base = track_length / max(1.0, driver.base_velocity)
+    comp = compound_name(driver)
+    weather_state = normalize_weather_state(weather, default="seco")
     return (
         base
-        + tyre_time_loss(compound_name(driver), driver.tyre_age, track_temp)  # type: ignore[arg-type]
+        + tyre_time_loss(comp, driver.tyre_age, track_temp)
+        + weather_time_delta(comp, weather_state)
         + fuel_time_delta(driver.fuel_load)
     )
 
@@ -248,6 +255,7 @@ def sample_overtake(
     rng: random.Random,
     *,
     track_temp: float = 35.0,
+    weather: str = "seco",
 ) -> list[OvertakeResult]:
     """Sorteia ultrapassagens para todos os pares consecutivos elegíveis no tick.
 
@@ -289,8 +297,13 @@ def sample_overtake(
         if zone is None:
             continue
 
-        attacker_lap_time = estimate_lap_time(attacker, track_map.length_m, track_temp)
-        pace_delta = estimate_lap_time(defender, track_map.length_m, track_temp) - attacker_lap_time
+        attacker_lap_time = estimate_lap_time(
+            attacker, track_map.length_m, track_temp, weather=weather
+        )
+        pace_delta = (
+            estimate_lap_time(defender, track_map.length_m, track_temp, weather=weather)
+            - attacker_lap_time
+        )
         speed_ms = track_map.length_m / attacker_lap_time if attacker_lap_time > 0.0 else 0.0
         difficulty = zone_difficulty(zone)
         t_zone = zone_traversal_time(zone.length_m, speed_ms)

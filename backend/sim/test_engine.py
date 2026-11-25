@@ -706,15 +706,22 @@ def test_clima_molhado_dispara_troca_para_pneu_de_chuva():
     assert engine._last_pit_lap["VER"] == 5
 
 
-def test_strategy_degradation_curve_maps_rain_compounds():
-    """Compostos de chuva usam o slick equivalente na projeção da heurística."""
+def test_strategy_degradation_curve_uses_native_rain_compounds():
+    """Compostos de chuva usam suas curvas nativas em `sim.physics` (M4)."""
     engine = RaceEngine(race_state=montar_grid_inicial(), base_lap_delay=0.01)
 
-    esperado = tyre_time_loss("medium", 10, engine.track_temp)
-    assert engine._strategy_degradation_curve("wet", 10) == pytest.approx(esperado)
-    assert engine._strategy_degradation_curve("INTERMEDIATE", 10) == pytest.approx(esperado)
+    assert engine._strategy_degradation_curve("wet", 10) == pytest.approx(
+        tyre_time_loss("wet", 10, engine.track_temp)
+    )
+    assert engine._strategy_degradation_curve("INTERMEDIATE", 10) == pytest.approx(
+        tyre_time_loss("intermediate", 10, engine.track_temp)
+    )
     assert engine._strategy_degradation_curve("soft", 10) == pytest.approx(
         tyre_time_loss("soft", 10, engine.track_temp)
+    )
+    # Composto desconhecido degrada de forma segura para medium
+    assert engine._strategy_degradation_curve("unknown", 10) == pytest.approx(
+        tyre_time_loss("medium", 10, engine.track_temp)
     )
 
 
@@ -741,3 +748,132 @@ def test_clima_molhado_com_pneu_de_chuva_nao_quebra_heuristica():
 
     assert ver.tyre_compound == TyreCompound.WET
     assert ver.pit_stops_made <= 1
+
+
+# ---------------------------------------------------------------------------
+# Integração do Módulo Climático Dinâmico (M4)
+# ---------------------------------------------------------------------------
+
+
+def test_clima_dinamico_avanca_por_volta_e_emite_evento():
+    """Transição da cadeia de Markov atualiza `weather` (D2) e enfileira `WEATHER_CHANGED`."""
+    matriz_forca_chuva = {
+        "seco": {"seco": 0.0, "umido": 1.0, "molhado": 0.0},
+        "umido": {"seco": 0.0, "umido": 0.0, "molhado": 1.0},
+        "molhado": {"seco": 0.0, "umido": 0.0, "molhado": 1.0},
+    }
+    state = montar_grid_inicial(grid=["VER", "NOR"], track_length=2000.0)
+    state.total_laps = 5
+    engine = RaceEngine(
+        race_state=state,
+        track_length=2000.0,
+        seed=42,
+        weather="DRY",
+        base_lap_delay=0.01,
+        dynamic_weather=True,
+        weather_transition_probs=matriz_forca_chuva,
+    )
+
+    assert engine.weather == "DRY"
+
+    engine.step_lap()
+    assert engine.weather == "DAMP"
+    assert engine.get_lap_update_envelope()["weather"] == "DAMP"
+    eventos_clima = [e for e in engine.pending_events if e["event_type"] == "WEATHER_CHANGED"]
+    assert len(eventos_clima) == 1
+    assert eventos_clima[0]["involved_drivers"] == []
+
+    engine.pending_events.clear()
+    engine.step_lap()
+    assert engine.weather == "WET"
+    assert engine.get_lap_update_envelope()["weather"] == "WET"
+    eventos_clima_2 = [e for e in engine.pending_events if e["event_type"] == "WEATHER_CHANGED"]
+    assert len(eventos_clima_2) == 1
+
+
+def test_clima_estatico_quando_dynamic_weather_desativado():
+    """Com `dynamic_weather=False`, o clima inicial não sofre transições de Markov."""
+    matriz_forca_chuva = {
+        "seco": {"seco": 0.0, "umido": 1.0, "molhado": 0.0},
+        "umido": {"seco": 0.0, "umido": 0.0, "molhado": 1.0},
+        "molhado": {"seco": 0.0, "umido": 0.0, "molhado": 1.0},
+    }
+    state = montar_grid_inicial(grid=["VER", "NOR"], track_length=2000.0)
+    state.total_laps = 4
+    engine = RaceEngine(
+        race_state=state,
+        track_length=2000.0,
+        seed=42,
+        weather="DRY",
+        base_lap_delay=0.01,
+        dynamic_weather=False,
+        weather_transition_probs=matriz_forca_chuva,
+    )
+
+    engine.step_lap()
+    engine.step_lap()
+
+    assert engine.weather == "DRY"
+    assert not any(e["event_type"] == "WEATHER_CHANGED" for e in engine.pending_events)
+
+
+def test_clima_umido_dispara_troca_para_intermediario():
+    """Em pista DAMP, slicks disparam parada por WEATHER para pneus INTERMEDIATE."""
+    state = montar_grid_inicial(grid=["VER", "NOR"], track_length=4000.0)
+    engine = RaceEngine(
+        race_state=state,
+        weather="DAMP",
+        track_length=4000.0,
+        base_lap_delay=0.01,
+    )
+
+    ver = state.drivers["VER"]
+    nor = state.drivers["NOR"]
+    for driver in (ver, nor):
+        driver.current_lap = 5
+        driver.lap_distance_covered = 1000.0
+    ver.lap_distance_covered = 0.9 * 4000.0
+
+    engine.step_tick(delta_time=0.5)
+
+    assert ver.pit_stops_made == 1
+    assert ver.tyre_compound == TyreCompound.INTERMEDIATE
+    assert engine.pending_events[0]["event_type"] == "PIT_STOP"
+    assert "WEATHER" in engine.pending_events[0]["description"]
+
+
+def test_incidentes_usam_grip_combinado_de_pneu_e_clima(monkeypatch):
+    """Slick em pista molhada recebe grip combinado bem menor que pneu WET no gerador NHPP."""
+    mapa = TrackMap.load("interlagos")
+    state = montar_grid_inicial(grid=["VER", "NOR"])
+    engine = RaceEngine(
+        race_state=state,
+        weather="WET",
+        seed=42,
+        base_lap_delay=0.01,
+        track_map=mapa,
+    )
+
+    state.drivers["VER"].tyre_compound = TyreCompound.SOFT
+    state.drivers["NOR"].tyre_compound = TyreCompound.WET
+
+    grips_recebidos: dict[str, float] = {}
+
+    def spy_incident(driver_id, lap_number, track_map, rng, **kwargs):  # noqa: ANN001
+        grips_recebidos[driver_id] = kwargs["grip_factor"]
+        return None
+
+    monkeypatch.setattr("sim.engine.sample_driver_lap_incident", spy_incident)
+
+    for driver in state.drivers.values():
+        # Volta 1 (antes da janela de pit da volta 2) para manter VER com slick ao cruzar a linha
+        driver.current_lap = 1
+        driver.lap_distance_covered = 4305.0
+    engine._previous_race_lap = 1
+
+    engine.step_tick(delta_time=1.0)
+
+    assert "VER" in grips_recebidos and "NOR" in grips_recebidos
+    assert grips_recebidos["VER"] < grips_recebidos["NOR"]
+    assert grips_recebidos["VER"] <= 0.30
+    assert grips_recebidos["NOR"] >= 0.80
