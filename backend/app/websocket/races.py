@@ -182,11 +182,11 @@ def get_or_create_engine(
                 try:
                     await ws.send_text(message)
                 except Exception:
-                    # Desconexões tratadas no handler principal
                     pass
 
         engine = RaceEngine(
             race_state=initial_state,
+            track_length=comprimento,
             race_id=race_id,
             seed=seed,
             weather=weather,

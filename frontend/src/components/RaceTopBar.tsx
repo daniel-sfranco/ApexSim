@@ -1,7 +1,8 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { useRaceStore } from "@/store/raceStore";
 import { TRACK_STATUS_CONFIG } from "@/lib/constants";
-import { Play, Pause, RotateCcw, Activity, CloudSun } from "lucide-react";
+import { Play, Pause, RotateCcw, Activity, CloudSun, ArrowLeft } from "lucide-react";
 
 interface RaceTopBarProps {
   onTogglePause: () => void;
@@ -36,8 +37,17 @@ export const RaceTopBar: React.FC<RaceTopBarProps> = ({
   return (
     <header className="bg-f1-surface border-b border-f1-border px-4 py-3 sticky top-0 z-40 shadow-lg">
       <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
-        {/* Lado Esquerdo: Identificação do GP e Voltas */}
+        {/* Lado Esquerdo: Voltar, Identificação do GP e Voltas */}
         <div className="flex items-center gap-4">
+          <Link
+            to="/setup"
+            title="Voltar para Configuração"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-f1-card hover:bg-f1-border border border-f1-border text-xs font-mono text-slate-300 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Setup</span>
+          </Link>
+
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-7 bg-f1-red rounded-sm"></span>
             <div>

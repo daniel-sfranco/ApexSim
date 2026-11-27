@@ -1,7 +1,8 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { SetupForm } from "@/components/SetupForm";
-import { Activity } from "lucide-react";
+import { getApiBaseUrl } from "@/lib/api";
+import { Activity, Compass } from "lucide-react";
 
 export const SetupScreen: React.FC = () => {
   return (
@@ -21,7 +22,18 @@ export const SetupScreen: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-4 text-xs font-mono">
+          <div className="flex items-center gap-3 text-xs font-mono">
+            <a
+              href={`${getApiBaseUrl()}/admin/track-editor`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-f1-card hover:bg-f1-border border border-f1-border text-slate-300 hover:text-white transition-colors"
+              title="Abrir Editor Semântico de Pistas (Contrato D4)"
+            >
+              <Compass className="w-3.5 h-3.5 text-amber-400" />
+              Editor de Pistas
+            </a>
+
             <Link
               to="/race/live"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-f1-card hover:bg-f1-border border border-f1-border text-slate-300 hover:text-white transition-colors"
