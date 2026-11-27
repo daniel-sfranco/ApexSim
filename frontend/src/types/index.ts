@@ -11,8 +11,43 @@ export type EventUpdate = components["schemas"]["EventUpdate"];
 export type ClientCommand = components["schemas"]["ClientCommand"];
 export type CreateRaceRequest = components["schemas"]["CreateRaceRequest"];
 export type CreateRaceResponse = components["schemas"]["CreateRaceResponse"];
+export type RaceDetailsResponse = components["schemas"]["RaceDetailsResponse"];
+export type RaceResultsResponse = components["schemas"]["RaceResultsResponse"];
+export type DriverFinalResult = components["schemas"]["DriverFinalResult"];
 export type CircuitGeometry = components["schemas"]["CircuitGeometry"];
 export type CircuitPoint = components["schemas"]["CircuitPoint"];
+
+// Estrutura de anotações semânticas da pista (Contrato D4)
+export interface TrackZone {
+  type:
+    | "sector"
+    | "drs_activation"
+    | "drs_detection"
+    | "braking_zone"
+    | "corner"
+    | "pit_entry"
+    | "pit_exit"
+    | "pit_lane"
+    | string;
+  start_m: number;
+  end_m: number;
+  props?: {
+    number?: number;
+    name?: string;
+    severity?: string;
+    runoff?: string;
+    speed_limit_kmh?: number;
+    time_loss_s?: number;
+    [key: string]: unknown;
+  };
+}
+
+export interface TrackMapData {
+  circuit_id: string;
+  length_m: number;
+  points: CircuitPoint[];
+  zones?: TrackZone[];
+}
 
 // Estrutura para equipes da F1 com identificação visual
 export interface TeamInfo {
@@ -34,7 +69,7 @@ export interface RaceConfig {
   initialStrategy?: Record<string, TyreCompound>;
 }
 
-// Estado enriquecido do piloto para a interface (Timing Tower)
+// Estado enriquecido do piloto para a interface (Timing Tower e Canvas)
 export interface EnrichedDriverState extends DriverUpdate {
   teamColor: string;
   positionChange: number; // >0 ganhou posições, <0 perdeu posições, 0 manteve
