@@ -221,7 +221,7 @@ export const CockpitScreen: React.FC = () => {
         {viewMode === "split" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-[calc(100vh-190px)]">
             {/* Coluna Esquerda/Centro: PISTA DE CORRIDA 2D CANVAS (7 de 12 colunas) */}
-            <section className="lg:col-span-7 flex flex-col h-full min-h-[460px]">
+            <section className="lg:col-span-7 flex flex-col h-full min-h-[540px]">
               <CircuitCanvas
                 circuitId={config.circuitId}
                 circuitName={config.circuitName}
@@ -229,7 +229,7 @@ export const CockpitScreen: React.FC = () => {
                 trackStatus={currentLapData?.track_status || "GREEN"}
                 selectedDriverId={selectedDriverId}
                 onSelectDriver={setSelectedDriverId}
-                className="flex-1"
+                className="flex-1 min-h-[540px]"
               />
             </section>
 

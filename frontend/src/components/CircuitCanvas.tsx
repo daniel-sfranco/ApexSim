@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   EnrichedDriverState,
   TrackMapData,
@@ -61,11 +67,20 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
   const [showSectors, setShowSectors] = useState<boolean>(true);
 
   // Interatividade (Hover e Pan)
-  const [hoveredDriver, setHoveredDriver] = useState<EnrichedDriverState | null>(null);
-  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredDriver, setHoveredDriver] =
+    useState<EnrichedDriverState | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   const [isPanning, setIsPanning] = useState<boolean>(false);
-  const [startPan, setStartPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [userPan, setUserPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [startPan, setStartPan] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
+  const [userPan, setUserPan] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
   const [userZoom, setUserZoom] = useState<number>(1.0);
 
   // Referências para valores dinâmicos: evita destruir/recriar o rAF a cada tick do WebSocket ou hover
@@ -116,7 +131,10 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       })
       .catch((err) => {
         if (!isMounted) return;
-        console.error(`[CircuitCanvas] Falha ao carregar mapa de ${circuitId}:`, err);
+        console.error(
+          `[CircuitCanvas] Falha ao carregar mapa de ${circuitId}:`,
+          err,
+        );
         setError("Não foi possível carregar a geometria da pista.");
         setLoading(false);
       });
@@ -129,7 +147,14 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
   // Bounding box e limites da pista
   const trackBounds = useMemo(() => {
     if (!trackData || !trackData.points || trackData.points.length === 0) {
-      return { minX: 0, maxX: 100, minY: 0, maxY: 100, width: 100, height: 100 };
+      return {
+        minX: 0,
+        maxX: 100,
+        minY: 0,
+        maxY: 100,
+        width: 100,
+        height: 100,
+      };
     }
 
     let minX = Infinity;
@@ -152,7 +177,11 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
 
   // Função utilitária para interpolar ponto (x, y) e ângulo tangente a partir de distance_m
   const getPointAtDistance = useCallback(
-    (distance: number, points: CircuitPoint[], totalLength: number): { x: number; y: number; angle: number } => {
+    (
+      distance: number,
+      points: CircuitPoint[],
+      totalLength: number,
+    ): { x: number; y: number; angle: number } => {
       if (!points || points.length === 0) {
         return { x: 0, y: 0, angle: 0 };
       }
@@ -179,11 +208,15 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         p2 = points[0];
       }
 
-      const segmentSpan = p2.distance_m >= p1.distance_m
-        ? (p2.distance_m - p1.distance_m) || 1
-        : (totalLength - p1.distance_m + p2.distance_m) || 1;
+      const segmentSpan =
+        p2.distance_m >= p1.distance_m
+          ? p2.distance_m - p1.distance_m || 1
+          : totalLength - p1.distance_m + p2.distance_m || 1;
 
-      const segD = d >= p1.distance_m ? d - p1.distance_m : totalLength - p1.distance_m + d;
+      const segD =
+        d >= p1.distance_m
+          ? d - p1.distance_m
+          : totalLength - p1.distance_m + d;
       const t = Math.max(0, Math.min(1, segD / segmentSpan));
 
       const x = p1.x + t * (p2.x - p1.x);
@@ -192,7 +225,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
 
       return { x, y, angle };
     },
-    []
+    [],
   );
 
   // Converte coordenadas reais do circuito para coordenadas de tela do Canvas
@@ -202,7 +235,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       worldY: number,
       canvasWidth: number,
       canvasHeight: number,
-      transform: ViewTransform
+      transform: ViewTransform,
     ): { x: number; y: number } => {
       const { minX, maxY } = trackBounds;
       // Inverte Y para corresponder ao sistema cartesiano tradicional das coordenadas FastF1
@@ -210,13 +243,19 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       const normalizedY = (maxY - worldY) * transform.scale;
 
       const screenX =
-        canvasWidth / 2 + (normalizedX - (canvasWidth / 2 - transform.offsetX)) * transform.userScale + transform.panX;
+        canvasWidth / 2 +
+        (normalizedX - (canvasWidth / 2 - transform.offsetX)) *
+          transform.userScale +
+        transform.panX;
       const screenY =
-        canvasHeight / 2 + (normalizedY - (canvasHeight / 2 - transform.offsetY)) * transform.userScale + transform.panY;
+        canvasHeight / 2 +
+        (normalizedY - (canvasHeight / 2 - transform.offsetY)) *
+          transform.userScale +
+        transform.panY;
 
       return { x: screenX, y: screenY };
     },
-    [trackBounds]
+    [trackBounds],
   );
 
   // Atualização e renderização do loop Canvas 2D
@@ -246,7 +285,10 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       }
 
       // Ajusta dimensões do buffer para nitidez de tela de alta resolução
-      if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+      if (
+        canvas.width !== Math.floor(width * dpr) ||
+        canvas.height !== Math.floor(height * dpr)
+      ) {
         canvas.width = Math.floor(width * dpr);
         canvas.height = Math.floor(height * dpr);
       }
@@ -292,12 +334,8 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       // Valores dinâmicos extraídos via ref para o frame atual
       const userZoom = userZoomRef.current;
       const userPan = userPanRef.current;
-      const {
-        showTags,
-        showCorners,
-        showDRSZones,
-        showSectors,
-      } = viewOptionsRef.current;
+      const { showTags, showCorners, showDRSZones, showSectors } =
+        viewOptionsRef.current;
       const currentDrivers = driversRef.current;
       const hoveredDriver = hoveredDriverRef.current;
       const selectedDriverId = selectedDriverIdRef.current;
@@ -312,13 +350,14 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       };
 
       const points = trackData.points;
-      const circuitLen = trackData.length_m || points[points.length - 1]?.distance_m || 4309;
+      const circuitLen =
+        trackData.length_m || points[points.length - 1]?.distance_m || 4309;
 
       // -------------------------------------------------------------
       // 1. DESENHO DO ASFALTO E CONTORNO DA PISTA
       // -------------------------------------------------------------
       const screenPoints = points.map((p) =>
-        worldToCanvas(p.x, p.y, width, height, transform)
+        worldToCanvas(p.x, p.y, width, height, transform),
       );
 
       // Traçado - Faixa Base de Asfalto (Larga)
@@ -357,8 +396,8 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
             sNum === 1
               ? "rgba(168, 85, 247, 0.45)" // Roxo
               : sNum === 2
-              ? "rgba(59, 130, 246, 0.45)" // Azul
-              : "rgba(245, 158, 11, 0.45)"; // Âmbar
+                ? "rgba(59, 130, 246, 0.45)" // Azul
+                : "rgba(245, 158, 11, 0.45)"; // Âmbar
 
           ctx.beginPath();
           let started = false;
@@ -380,11 +419,22 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
           }
 
           // Marcador do início do setor
-          const sectorStartPt = getPointAtDistance(sz.start_m, points, circuitLen);
-          const sSp = worldToCanvas(sectorStartPt.x, sectorStartPt.y, width, height, transform);
+          const sectorStartPt = getPointAtDistance(
+            sz.start_m,
+            points,
+            circuitLen,
+          );
+          const sSp = worldToCanvas(
+            sectorStartPt.x,
+            sectorStartPt.y,
+            width,
+            height,
+            transform,
+          );
 
           ctx.save();
-          ctx.fillStyle = sNum === 1 ? "#C084FC" : sNum === 2 ? "#60A5FA" : "#FBBF24";
+          ctx.fillStyle =
+            sNum === 1 ? "#C084FC" : sNum === 2 ? "#60A5FA" : "#FBBF24";
           ctx.beginPath();
           ctx.arc(sSp.x, sSp.y, 4 * userZoom, 0, Math.PI * 2);
           ctx.fill();
@@ -400,7 +450,9 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       // 3. ZONAS DE DRS (ATIVAS / DETECÇÃO)
       // -------------------------------------------------------------
       if (showDRSZones && trackData.zones) {
-        const drsZones = trackData.zones.filter((z) => z.type === "drs_activation");
+        const drsZones = trackData.zones.filter(
+          (z) => z.type === "drs_activation",
+        );
         drsZones.forEach((dz) => {
           ctx.save();
           ctx.beginPath();
@@ -428,7 +480,13 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
 
           // Placa indicativa de DRS
           const drsStartPt = getPointAtDistance(dz.start_m, points, circuitLen);
-          const drsSp = worldToCanvas(drsStartPt.x, drsStartPt.y, width, height, transform);
+          const drsSp = worldToCanvas(
+            drsStartPt.x,
+            drsStartPt.y,
+            width,
+            height,
+            transform,
+          );
           ctx.save();
           ctx.font = `bold ${Math.max(8, 9 * userZoom)}px sans-serif`;
           ctx.fillStyle = "#10B981";
@@ -441,7 +499,13 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       // 4. LINHA DE CHEGADA / LARGADA (distance = 0)
       // -------------------------------------------------------------
       const finishPt = getPointAtDistance(0, points, circuitLen);
-      const finishScreen = worldToCanvas(finishPt.x, finishPt.y, width, height, transform);
+      const finishScreen = worldToCanvas(
+        finishPt.x,
+        finishPt.y,
+        width,
+        height,
+        transform,
+      );
 
       // Traço perpendicular quadriculado / branco
       const normalAngle = finishPt.angle + Math.PI / 2;
@@ -462,7 +526,11 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       // Ícone ou texto da linha de largada
       ctx.font = `bold ${Math.max(9, 10 * userZoom)}px sans-serif`;
       ctx.fillStyle = "#FFFFFF";
-      ctx.fillText("🏁", finishScreen.x + 8 * userZoom, finishScreen.y - 6 * userZoom);
+      ctx.fillText(
+        "🏁",
+        finishScreen.x + 8 * userZoom,
+        finishScreen.y - 6 * userZoom,
+      );
       ctx.restore();
 
       // -------------------------------------------------------------
@@ -473,12 +541,20 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         corners.forEach((c) => {
           const midDist = (c.start_m + c.end_m) / 2;
           const cornerPt = getPointAtDistance(midDist, points, circuitLen);
-          const cp = worldToCanvas(cornerPt.x, cornerPt.y, width, height, transform);
+          const cp = worldToCanvas(
+            cornerPt.x,
+            cornerPt.y,
+            width,
+            height,
+            transform,
+          );
 
           // Posição ligeiramente deslocada para fora da pista
           const offsetDist = 18 * userZoom;
-          const textX = cp.x + Math.cos(cornerPt.angle + Math.PI / 2) * offsetDist;
-          const textY = cp.y - Math.sin(cornerPt.angle + Math.PI / 2) * offsetDist;
+          const textX =
+            cp.x + Math.cos(cornerPt.angle + Math.PI / 2) * offsetDist;
+          const textY =
+            cp.y - Math.sin(cornerPt.angle + Math.PI / 2) * offsetDist;
 
           ctx.save();
           // Badge da curva
@@ -495,7 +571,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
             textY - 6,
             textWidth + 8,
             13,
-            3
+            3,
           );
           ctx.fill();
           ctx.stroke();
@@ -519,7 +595,9 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       // 6. CARROS E PILOTOS (Interpolação suave a 60 FPS)
       // -------------------------------------------------------------
       const currentAnimDistances = animDistancesRef.current;
-      const sortedDrivers = [...currentDrivers].sort((a, b) => b.position - a.position); // P1 desenhado por último para ficar por cima
+      const sortedDrivers = [...currentDrivers].sort(
+        (a, b) => b.position - a.position,
+      ); // P1 desenhado por último para ficar por cima
 
       // Atualiza distâncias interpoladas
       currentDrivers.forEach((d) => {
@@ -547,7 +625,8 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       sortedDrivers.forEach((driver) => {
         if (driver.is_retired) return; // Pilotos abandonados não circulam
 
-        const dDist = currentAnimDistances[driver.driver_id] ?? driver.distance_m;
+        const dDist =
+          currentAnimDistances[driver.driver_id] ?? driver.distance_m;
         const pt = getPointAtDistance(dDist, points, circuitLen);
         const basePos = worldToCanvas(pt.x, pt.y, width, height, transform);
 
@@ -564,7 +643,13 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         if (driver.drs_active) {
           // Pulso de DRS Verde Neon
           ctx.beginPath();
-          ctx.arc(basePos.x, basePos.y, carRadius + 4 * userZoom, 0, Math.PI * 2);
+          ctx.arc(
+            basePos.x,
+            basePos.y,
+            carRadius + 4 * userZoom,
+            0,
+            Math.PI * 2,
+          );
           ctx.strokeStyle = "rgba(16, 185, 129, 0.85)";
           ctx.lineWidth = 2 * userZoom;
           ctx.shadowColor = "#10B981";
@@ -575,7 +660,13 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         if (isLeader) {
           // Coroa dourada / Anel do Líder
           ctx.beginPath();
-          ctx.arc(basePos.x, basePos.y, carRadius + 3 * userZoom, 0, Math.PI * 2);
+          ctx.arc(
+            basePos.x,
+            basePos.y,
+            carRadius + 3 * userZoom,
+            0,
+            Math.PI * 2,
+          );
           ctx.strokeStyle = "#F59E0B";
           ctx.lineWidth = 2.5 * userZoom;
           ctx.shadowColor = "#F59E0B";
@@ -584,7 +675,13 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         } else if (isSelected) {
           // Selecionado pelo usuário
           ctx.beginPath();
-          ctx.arc(basePos.x, basePos.y, carRadius + 4 * userZoom, 0, Math.PI * 2);
+          ctx.arc(
+            basePos.x,
+            basePos.y,
+            carRadius + 4 * userZoom,
+            0,
+            Math.PI * 2,
+          );
           ctx.strokeStyle = "#FFFFFF";
           ctx.lineWidth = 2.5 * userZoom;
           ctx.shadowColor = "#FFFFFF";
@@ -599,7 +696,11 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         ctx.fill();
 
         // Borda do círculo
-        ctx.strokeStyle = isLeader ? "#FCD34D" : isSelected ? "#FFFFFF" : "#0F172A";
+        ctx.strokeStyle = isLeader
+          ? "#FCD34D"
+          : isSelected
+            ? "#FFFFFF"
+            : "#0F172A";
         ctx.lineWidth = 1.8 * userZoom;
         ctx.stroke();
 
@@ -625,8 +726,8 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
           ctx.fillStyle = isSelected
             ? "rgba(15, 23, 42, 0.95)"
             : isLeader
-            ? "rgba(245, 158, 11, 0.9)"
-            : "rgba(15, 23, 42, 0.85)";
+              ? "rgba(245, 158, 11, 0.9)"
+              : "rgba(15, 23, 42, 0.85)";
           ctx.strokeStyle = driver.teamColor || "#475569";
           ctx.lineWidth = 1;
 
@@ -657,12 +758,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
         cancelAnimationFrame(animationFrameIdRef.current);
       }
     };
-  }, [
-    trackData,
-    trackBounds,
-    worldToCanvas,
-    getPointAtDistance,
-  ]);
+  }, [trackData, trackBounds, worldToCanvas, getPointAtDistance]);
 
   // Wheel listener nativo com { passive: false } para suportar zoom sem warning no console e sem rolar a página
   useEffect(() => {
@@ -708,7 +804,10 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     const padding = 60;
     const availableW = Math.max(10, width - padding * 2);
     const availableH = Math.max(10, height - padding * 2);
-    const baseScale = Math.min(availableW / trackBounds.width, availableH / trackBounds.height);
+    const baseScale = Math.min(
+      availableW / trackBounds.width,
+      availableH / trackBounds.height,
+    );
 
     const currentZoom = userZoomRef.current;
     const currentPan = userPanRef.current;
@@ -746,7 +845,9 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       // Se clicou em um piloto, seleciona-o
       if (hoveredDriver) {
         onSelectDriver?.(
-          selectedDriverId === hoveredDriver.driver_id ? null : hoveredDriver.driver_id
+          selectedDriverId === hoveredDriver.driver_id
+            ? null
+            : hoveredDriver.driver_id,
         );
       } else {
         // Inicia arrastar (pan)
@@ -765,10 +866,12 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     setUserPan({ x: 0, y: 0 });
   };
 
+  const minHeightClass = className.includes("min-h-") ? "" : "min-h-[380px]";
+
   return (
     <div
       ref={containerRef}
-      className={`relative w-full h-full min-h-[380px] bg-[#0c1017] rounded-xl border border-f1-border overflow-hidden shadow-2xl flex flex-col ${className}`}
+      className={`relative w-full h-full ${minHeightClass} bg-[#0c1017] rounded-xl border border-f1-border overflow-hidden shadow-2xl flex flex-col ${className}`}
     >
       {/* Barra de Título Superior do Circuito */}
       <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
@@ -779,7 +882,9 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
               {circuitName}
             </h3>
             <p className="text-[10px] font-mono text-f1-muted">
-              {trackData ? `${trackData.length_m}m • Canvas 2D Live Tracker` : "Carregando..."}
+              {trackData
+                ? `${trackData.length_m}m • Canvas 2D Live Tracker`
+                : "Carregando..."}
             </p>
           </div>
         </div>
@@ -889,7 +994,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       </div>
 
       {/* Elemento Canvas Real */}
-      <div className="flex-1 w-full h-full relative cursor-grab active:cursor-grabbing">
+      <div className="flex-1 min-h-0 w-full relative overflow-hidden cursor-grab active:cursor-grabbing">
         {loading && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-f1-dark/80 backdrop-blur-sm gap-2 font-mono text-xs text-slate-300">
             <div className="w-6 h-6 border-2 border-f1-red border-t-transparent rounded-full animate-spin"></div>
@@ -915,7 +1020,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          className="w-full h-full block"
+          className="absolute inset-0 w-full h-full block"
         />
 
         {/* Tooltip de Telemetria F1 ao passar o mouse sobre um carro */}
@@ -938,12 +1043,16 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
                     {hoveredDriver.name}
                   </span>
                 </div>
-                <span className="font-bold text-amber-400">P{hoveredDriver.position}</span>
+                <span className="font-bold text-amber-400">
+                  P{hoveredDriver.position}
+                </span>
               </div>
 
               <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-[11px]">
                 <div className="text-slate-400">Equipe:</div>
-                <div className="font-semibold truncate">{hoveredDriver.team}</div>
+                <div className="font-semibold truncate">
+                  {hoveredDriver.team}
+                </div>
 
                 <div className="text-slate-400">Gap Líder:</div>
                 <div className="font-semibold text-right">
@@ -989,7 +1098,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       </div>
 
       {/* Barra Inferior com Legenda e Controles de Piloto Selecionado */}
-      <div className="bg-f1-dark/90 border-t border-f1-border/60 px-4 py-2 flex flex-wrap items-center justify-between text-xs font-mono text-f1-muted gap-2">
+      <div className="shrink-0 bg-f1-dark/90 border-t border-f1-border/60 px-4 py-2 flex flex-wrap items-center justify-between text-xs font-mono text-f1-muted gap-2">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-amber-400/30"></span>
@@ -1015,7 +1124,9 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
 
         {selectedDriverId ? (
           <div className="flex items-center gap-2 bg-f1-card px-2.5 py-1 rounded border border-f1-border">
-            <span className="text-white font-bold">Foco: {selectedDriverId}</span>
+            <span className="text-white font-bold">
+              Foco: {selectedDriverId}
+            </span>
             <button
               onClick={() => onSelectDriver?.(null)}
               className="text-f1-muted hover:text-white"
