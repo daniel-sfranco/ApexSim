@@ -1,0 +1,13 @@
+variante,composto,n_voltas,idade_max,perda_idade_10_s,perda_idade_15_s
+base,SOFT,3500,19,0.266,0.697
+base,MEDIUM,13241,29,0.211,0.457
+base,HARD,21400,41,0.469,0.797
+limite_105,SOFT,3497,19,0.307,0.746
+limite_105,MEDIUM,13194,29,0.262,0.507
+limite_105,HARD,21364,41,0.464,0.81
+limite_110,SOFT,3509,19,0.247,0.68
+limite_110,MEDIUM,13262,29,0.193,0.431
+limite_110,HARD,21430,41,0.469,0.761
+sem_gps_divergentes,SOFT,3024,18,0.193,0.574
+sem_gps_divergentes,MEDIUM,12116,28,0.135,0.407
+sem_gps_divergentes,HARD,19965,40,0.444,0.779

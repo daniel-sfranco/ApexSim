@@ -1,0 +1,31 @@
+# Material de estudo pessoal — não faz parte do repositório do grupo
+CLAUDE.md
+ApexSim_Roadmap.pdf
+Cronograma-MC857.txt
+PDD_MC857A_2s2026.pdf
+
+# Datasets brutos e cache do FastF1 (seção 5 do CLAUDE.md)
+data/raw/
+cache/
+
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+<<<<<<< HEAD
+
+# Arquivos temporários do NFS (surgem ao apagar arquivo aberto em home de rede)
+.nfs*
+=======
+out/
+dist/
+*.tsbuildinfo
+>>>>>>> 239d7aa (feat(front): implementa marcos M0 e M1 com Next.js, Timing Tower e WebSocket mock)

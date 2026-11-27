@@ -1,0 +1,68 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-apexsim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-apexsim}
+      POSTGRES_DB: ${POSTGRES_DB:-apexsim}
+    # 5433 no host por padrão: quem já tem um Postgres local na 5432 não
+    # consegue subir o ambiente. A API fala com o banco pela rede interna do
+    # compose (db:5432), então isto só serve para clientes fora do Docker.
+    ports:
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Sem healthcheck a API sobe antes do banco aceitar conexão e o primeiro
+    # `make up` de outra pessoa falha — que é justamente o critério do M0.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-apexsim} -d ${POSTGRES_DB:-apexsim}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    # Migrations e seed antes da API: quem dá `git pull` e `make up` sempre sobe com
+    # o schema atualizado e a referência (pilotos, equipes...) carregada, e os bancos
+    # locais do grupo não divergem. O seed é idempotente, então repetir é barato.
+    command: sh -c "alembic upgrade head && python -m db.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-apexsim}:${POSTGRES_PASSWORD:-apexsim}@db:5432/${POSTGRES_DB:-apexsim}
+      FASTF1_CACHE_DIR: /cache/fastf1
+      # Token do Kaggle, só para `make kaggle`. Vem do .env (fora do git).
+      KAGGLE_API_TOKEN: ${KAGGLE_API_TOKEN:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./circuits:/circuits
+      - ./tools:/tools
+      - ./track_maps:/track_maps
+      # Contrato D2: o teste de contrato lê docs/openapi.json (somente leitura).
+      - ./docs:/docs:ro
+      # Datasets brutos (fora do git), mapeamentos e curvas (versionados).
+      - ./data:/data
+      - fastf1_cache:/cache/fastf1
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: node:20-slim
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  fastf1_cache:
