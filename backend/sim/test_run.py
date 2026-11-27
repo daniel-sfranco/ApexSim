@@ -229,12 +229,24 @@ def test_montar_grid_inicial_inclui_pilotos_fora_do_grid_padrao():
     assert estado.drivers["COL"].team == "Williams"
 
 
-def test_montar_grid_inicial_sem_argumentos_mantem_grid_padrao():
-    """Sem payload do setup, o comportamento antigo (20 pilotos) é preservado."""
+def test_montar_grid_inicial_aplica_alocacao_padrao_por_posicao():
+    """Sem compostos explícitos, o grid mistura SOFT, MEDIUM e HARD por faixa."""
     estado = montar_grid_inicial()
 
     assert len(estado.drivers) == 20
-    assert all(d.tyre_compound is TyreCompound.MEDIUM for d in estado.drivers.values())
+    pilotos = list(estado.drivers.values())
+    assert all(d.tyre_compound is TyreCompound.SOFT for d in pilotos[:6])
+    assert all(d.tyre_compound is TyreCompound.MEDIUM for d in pilotos[6:14])
+    assert all(d.tyre_compound is TyreCompound.HARD for d in pilotos[14:20])
+
+
+def test_montar_grid_inicial_composto_explicito_vence_alocacao():
+    """O composto escolhido no setup tem prioridade sobre a alocação padrão."""
+    estado = montar_grid_inicial(grid=["VER", "NOR"], initial_tyres={"VER": "HARD"})
+
+    assert estado.drivers["VER"].tyre_compound is TyreCompound.HARD
+    # NOR não foi informado: P2 cai na faixa SOFT da alocação padrão.
+    assert estado.drivers["NOR"].tyre_compound is TyreCompound.SOFT
 
 
 def test_montar_grid_inicial_separa_fisicamente_os_carros():

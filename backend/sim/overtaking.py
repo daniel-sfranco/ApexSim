@@ -44,18 +44,16 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 # Probabilidade base de sucesso em UMA tentativa de ultrapassagem (uma travessia
-# de zona) com ritmo, gap, DRS e dificuldade neutros. O motor faz no máximo uma
-# tentativa por entrada em zona, então o valor já é o da travessia completa.
-OVERTAKE_BASE_ZONE_PROBABILITY = 0.014
+# de zona) com ritmo, gap, DRS e dificuldade neutros. Calibrada para aproximar
+# as médias reais da F1 (Interlagos ~42,8, Mônaco ~9,2, Monza ~58,8) em conjunto
+# com `CIRCUIT_OVERTAKE_MULTIPLIERS` e o cooldown do defensor.
+OVERTAKE_BASE_ZONE_PROBABILITY = 0.0062
 
 # Teto da probabilidade acumulada em uma travessia de zona.
 OVERTAKE_MAX_ZONE_PROBABILITY = 0.90
 
 # Gap máximo (s) para considerar que o atacante está ao alcance de uma passada.
 OVERTAKE_MAX_GAP_S = 0.8
-
-# Volta mínima (largada não conta como oportunidade de ultrapassagem).
-OVERTAKE_MIN_LAP = 2
 
 # Sensibilidade ao diferencial de ritmo (s/volta) e limites do multiplicador.
 OVERTAKE_PACE_EXPONENT = 1.2
@@ -78,10 +76,18 @@ OVERTAKE_DIFFICULTY_WEIGHTS: dict[str, float] = {
     "alta": 0.7,
 }
 
+# Fator específico por circuito (efeito de vácuo/baixa carga em Monza vs.
+# largura restrita de circuito de rua em Mônaco). Circuitos sem entrada usam 1.0.
+CIRCUIT_OVERTAKE_MULTIPLIERS: dict[str, float] = {
+    "interlagos": 1.0,
+    "monaco": 1.08,
+    "monza": 2.95,
+}
+
 # Cooldown (s) para o atacante não emendar ultrapassagens e para o defensor
-# não repassar imediatamente (efeito ping-pong).
-OVERTAKE_ATTACKER_COOLDOWN_S = 4.0
-OVERTAKE_DEFENDER_COOLDOWN_S = 3.0
+# não repassar imediatamente na curva seguinte (evita efeito ping-pong).
+OVERTAKE_ATTACKER_COOLDOWN_S = 6.0
+OVERTAKE_DEFENDER_COOLDOWN_S = 45.0
 
 
 @dataclass(frozen=True)
@@ -156,12 +162,20 @@ def gap_weight(gap_ahead_s: float) -> float:
     )
 
 
+def circuit_overtake_multiplier(circuit_id: str | None) -> float:
+    """Multiplicador de ultrapassagem específico do circuito (default 1.0)."""
+    if not circuit_id:
+        return 1.0
+    return CIRCUIT_OVERTAKE_MULTIPLIERS.get(str(circuit_id).strip().lower(), 1.0)
+
+
 def overtake_probability(
     pace_delta_s: float,
     gap_ahead_s: float,
     *,
     drs_active: bool = False,
     difficulty: str | None = None,
+    circuit_multiplier: float = 1.0,
 ) -> float:
     """Probabilidade de sucesso em UMA tentativa de ultrapassagem.
 
@@ -173,6 +187,7 @@ def overtake_probability(
         gap_ahead_s: gap atual para o carro à frente (s).
         drs_active: se o atacante está com DRS aberto.
         difficulty: dificuldade da zona (`baixa`, `media`, `alta`) ou None.
+        circuit_multiplier: fator específico do circuito (padrão 1.0).
 
     Returns:
         Probabilidade em [0, OVERTAKE_MAX_ZONE_PROBABILITY].
@@ -184,6 +199,7 @@ def overtake_probability(
     probability *= difficulty_weight(difficulty)
     probability *= pace_weight(pace_delta_s)
     probability *= gap_weight(gap_ahead_s)
+    probability *= max(0.0, circuit_multiplier)
     if drs_active:
         probability *= OVERTAKE_DRS_WEIGHT
     return min(probability, OVERTAKE_MAX_ZONE_PROBABILITY)
@@ -282,8 +298,6 @@ def sample_overtake(
             continue
         if attacker.pit_status != PitStatus.NONE or defender.pit_status != PitStatus.NONE:
             continue
-        if attacker.current_lap < OVERTAKE_MIN_LAP:
-            continue
         if attacker.current_lap >= state.total_laps or defender.current_lap >= state.total_laps:
             continue
         if attacker.current_lap != defender.current_lap:
@@ -312,6 +326,7 @@ def sample_overtake(
             gap,
             drs_active=attacker.drs_active,
             difficulty=difficulty,
+            circuit_multiplier=circuit_overtake_multiplier(track_map.circuit_id),
         )
 
         # Uma tentativa por travessia de zona: o cooldown cobre a passagem

@@ -67,6 +67,23 @@ class PitStrategyHeuristic:
         return self.team_aggression.get(team, DEFAULT_AGGRESSION)
 
     @staticmethod
+    def _min_sc_tyre_age(compound: str, aggression: float) -> int:
+        """Idade mínima de pneu (voltas) para aproveitar janela oportunista sob Safety Car."""
+        base_by_compound = {
+            "soft": 13.0,
+            "medium": 19.0,
+            "hard": 27.0,
+        }
+        span_by_compound = {
+            "soft": 4.0,
+            "medium": 5.0,
+            "hard": 6.0,
+        }
+        base_age = base_by_compound.get(compound, 19.0)
+        span = span_by_compound.get(compound, 5.0)
+        return int(base_age - (aggression * span))
+
+    @staticmethod
     def _normalize_weather(weather: str) -> str:
         """Normaliza o clima (EN/PT) para 'dry', 'damp' ou 'wet'."""
         w = str(weather).strip().lower()
@@ -230,8 +247,10 @@ class PitStrategyHeuristic:
             loss_fresh = sum(degradation_curve(target_compound, k) for k in range(1, horizon + 1))
             accumulated_loss = loss_current - loss_fresh
 
-            # Pilotos na janela aproveitam o custo reduzido sob Safety Car
-            min_sc_age = int(14 - (aggression * 6))  # 8 voltas p/ agressivo, 13 p/ conservador
+            # Pilotos na janela aproveitam o custo reduzido sob Safety Car.
+            # O limiar mínimo de idade depende do composto para evitar que pneus
+            # Medium/Hard ainda novos parem em todo SC (ex.: Mônaco com 3-4 paradas).
+            min_sc_age = self._min_sc_tyre_age(compound, aggression)
             if accumulated_loss > sc_adjusted_cost or tyre_age >= min_sc_age:
                 return PitDecision(
                     should_pit=True,

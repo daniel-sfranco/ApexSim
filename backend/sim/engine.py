@@ -17,11 +17,13 @@ import inspect
 import random
 import uuid
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any
 
 from sim.events import RaceIncident, SafetyCarStateMachine, sample_driver_lap_incident
 from sim.overtaking import compound_name, sample_overtake
 from sim.physics import normalize_compound_name, tyre_grip, tyre_time_loss
+from sim.run import GRID_REFERENCE_VELOCITY_MS
 from sim.state import (
     DriverState,
     LapResult,
@@ -33,6 +35,7 @@ from sim.state import (
     tick,
     todos_pilotos_finalizados,
 )
+from sim.strategy_profile import DriverProfile, build_driver_profiles
 from sim.track import TrackMap
 from sim.weather import (
     DEFAULT_TRANSITION_PROBABILITIES,
@@ -41,6 +44,12 @@ from sim.weather import (
     normalize_weather_state,
     weather_grip_factor,
     weather_state_to_contract,
+)
+from strategy.config import (
+    PIT_STOP_NOISE_S,
+    UNDERCUT_GAP_THRESHOLD_S,
+    UNDERCUT_MIN_GAP_S,
+    UNDERCUT_REACTION_WINDOW_LAPS,
 )
 from strategy.heuristic import PitStrategyHeuristic
 from strategy.monte_carlo import MonteCarloStrategyOptimizer
@@ -178,6 +187,19 @@ class RaceEngine:
         else:
             self.pit_lane_loss_s = 22.0
             self.pit_speed_limit_ms = 22.2
+
+        # Perfis individuais: dessincronizam ritmo, degradação, pit crew e
+        # agressividade sem abrir mão do determinismo por seed.
+        self.driver_profiles: dict[str, DriverProfile] = build_driver_profiles(
+            self.seed, self.state.drivers
+        )
+        self._driver_aggression: dict[str, float] = {}
+        self._driver_degradation: dict[str, Callable[[str, int], float]] = {}
+        self._apply_driver_profiles()
+
+        # Volta da última reação de undercut por piloto. Usado para permitir no
+        # máximo uma reação por stint e evitar a parada em cascata do pelotão.
+        self._undercut_reaction_age: dict[str, int] = {}
 
         # Direção de prova (Safety Car / VSC) e controle de voltas.
         self.race_control = SafetyCarStateMachine()
@@ -335,8 +357,105 @@ class RaceEngine:
         return self.weather.lower()
 
     def _aggression_for(self, team: str) -> float:
-        """Agressividade da equipe configurada na heurística de estratégia."""
+        """Agressividade configurada para a equipe (ou para um `driver_id`)."""
         return self.pit_heuristic.team_aggression.get(team, 0.5)
+
+    def _apply_driver_profiles(self) -> None:
+        """Aplica ritmo, agressividade e curva de degradação individuais.
+
+        O ritmo só é ajustado quando o piloto ainda está na velocidade de
+        referência do grid; estados carregados com velocidade própria são
+        preservados. A heurística consulta a agressividade pelo campo ``team``
+        do adaptador, então registramos também as chaves por ``driver_id``.
+        """
+        for driver in self.state.drivers.values():
+            profile = self.driver_profiles.get(driver.driver_id)
+            if profile is None:
+                continue
+
+            if abs(driver.base_velocity - GRID_REFERENCE_VELOCITY_MS) < 1e-9:
+                driver.base_velocity = GRID_REFERENCE_VELOCITY_MS + profile.pace_offset_ms
+
+            base_aggression = self.pit_heuristic.team_aggression.get(driver.team, 0.5)
+            self._driver_aggression[driver.driver_id] = max(
+                0.05, min(0.95, base_aggression + profile.aggression_jitter)
+            )
+            self._driver_degradation[driver.driver_id] = partial(
+                self._scaled_degradation_curve, factor=profile.tyre_factor
+            )
+
+        self.pit_heuristic.team_aggression.update(self._driver_aggression)
+
+    def _scaled_degradation_curve(self, compound: str, age_laps: int, *, factor: float) -> float:
+        """Curva de degradação ajustada pela gestão de pneu do piloto."""
+        return self._strategy_degradation_curve(compound, age_laps) * factor
+
+    def _roll_pit_duration(self, driver: DriverState) -> float:
+        """Duração da passagem pelo pit: base da pista + crew + ruído da parada."""
+        profile = self.driver_profiles.get(driver.driver_id)
+        delta = profile.pit_crew_delta_s if profile else 0.0
+        return max(
+            15.0,
+            self.pit_lane_loss_s + delta + self.rng.uniform(-PIT_STOP_NOISE_S, PIT_STOP_NOISE_S),
+        )
+
+    @staticmethod
+    def _gap_to_rival_behind_s(driver: DriverState, rival: DriverState) -> float:
+        """Gap físico (s) entre o piloto e o rival imediatamente atrás.
+
+        Usa a diferença de distância total (que inclui o espaçamento do grid) e
+        a velocidade de referência do piloto. Quando os dois estão exatamente na
+        mesma distância (estado sintético de teste), cai para o ``gap_to_ahead``
+        informado no estado.
+        """
+        gap_m = driver.total_distance_covered - rival.total_distance_covered
+        if gap_m <= 0.0:
+            return float(rival.gap_to_ahead) if rival.gap_to_ahead is not None else 0.0
+        return gap_m / max(1.0, driver.base_velocity)
+
+    def _undercut_allowed(
+        self,
+        driver: DriverState,
+        ativos: list[DriverState],
+        posicoes: dict[str, int],
+    ) -> bool:
+        """Gate da reação de undercut (evita a parada em cascata do pelotão).
+
+        A heurística reage a qualquer rival que tenha parado nas últimas voltas
+        quando o gap é menor que o limiar dela. Como o pelotão costuma andar
+        colado, isso fazia o carro à frente reagir, depois o próximo, e assim
+        por diante. Aqui o motor exige um rival de fato próximo (limiar mais
+        restrito), uma parada recente e no máximo uma reação por stint.
+        """
+        indice = posicoes.get(driver.driver_id, -1)
+        if not (0 <= indice < len(ativos) - 1):
+            return False
+
+        rival = ativos[indice + 1]
+        gap_s = self._gap_to_rival_behind_s(driver, rival)
+        # Um rival colado (< 0,5 s) está disputando posição, não armando
+        # undercut; acima de 1,8 s a ameaça de perder a posição é pequena.
+        if not (UNDERCUT_MIN_GAP_S <= gap_s <= UNDERCUT_GAP_THRESHOLD_S):
+            return False
+
+        # O rival precisa ter concluído a parada na volta anterior. Reagir a
+        # quem ainda está no box (ou parou várias voltas atrás) é o que
+        # propagava a parada por todo o pelotão no mesmo tick.
+        ultima_parada = self._last_pit_lap.get(rival.driver_id)
+        if rival.pit_status != PitStatus.NONE:
+            return False
+        if (
+            ultima_parada is None
+            or driver.current_lap - ultima_parada != UNDERCUT_REACTION_WINDOW_LAPS
+        ):
+            return False
+
+        idade_reacao = self._undercut_reaction_age.get(driver.driver_id)
+        if idade_reacao is not None and driver.tyre_age >= idade_reacao:
+            return False
+
+        self._undercut_reaction_age[driver.driver_id] = driver.tyre_age
+        return True
 
     def _queue_event(
         self,
@@ -373,6 +492,10 @@ class RaceEngine:
         A heurística aceita dicts, então o motor passa adaptadores com os dados
         que os dataclasses de domínio não carregam (clima e contexto do rival
         imediatamente atrás), sem alterar `RaceState`/`DriverState`.
+
+        Cada piloto usa o próprio perfil (ritmo, gestão de pneu, pit crew e
+        agressividade). A reação de undercut ainda passa por um gate do motor,
+        que evita a reação em cadeia no pelotão.
         """
         ativos = sorted(
             (driver for driver in self.state.drivers.values() if not driver.is_retired),
@@ -408,13 +531,23 @@ class RaceEngine:
                 continue
             self._last_pit_eval_key[driver.driver_id] = eval_key
 
+            profile = self.driver_profiles.get(driver.driver_id)
+            pit_loss_for_decision = self.pit_lane_loss_s + (
+                profile.pit_crew_delta_s if profile else 0.0
+            )
             decision = self.pit_heuristic.evaluate_driver(
                 driver_state=driver_adapter,
                 race_state=race_adapter,
-                pit_lane_loss_s=self.pit_lane_loss_s,
-                degradation_curve=self._strategy_degradation_curve,
+                pit_lane_loss_s=pit_loss_for_decision,
+                degradation_curve=self._driver_degradation.get(
+                    driver.driver_id, self._strategy_degradation_curve
+                ),
             )
             if not decision.should_pit:
+                continue
+            if decision.reason == "UNDERCUT" and not self._undercut_allowed(
+                driver, ativos, posicoes
+            ):
                 continue
 
             target_name = (decision.target_compound or "medium").upper()
@@ -423,12 +556,13 @@ class RaceEngine:
             except KeyError:
                 novo_composto = TyreCompound.MEDIUM
 
+            pit_duration = self._roll_pit_duration(driver)
             driver.pit_status = PitStatus.IN_PIT
-            driver.pit_time_remaining = self.pit_lane_loss_s
+            driver.pit_time_remaining = pit_duration
             driver.pit_stops_made += 1
             self._last_pit_lap[driver.driver_id] = driver.current_lap
             driver.pit_stop_in_this_lap = True
-            driver.pit_time_in_this_lap = self.pit_lane_loss_s
+            driver.pit_time_in_this_lap = pit_duration
             driver.tyre_compound = novo_composto
             driver.tyre_age = 0
 
@@ -474,12 +608,15 @@ class RaceEngine:
         ultima_parada = self._last_pit_lap.get(rival.driver_id) if rival else None
 
         return {
-            "team": driver.team,
+            # A heurística usa este campo para buscar a agressividade. Passamos o
+            # `driver_id` porque o perfil individual está registrado nessa chave
+            # (as equipes do banco podem ter nomes diferentes do grid padrão).
+            "team": driver.driver_id,
             "tyre_compound": driver.tyre_compound,
             "tyre_age": driver.tyre_age,
             "current_lap": driver.current_lap,
-            # O gap do rival até este piloto é o `gap_to_ahead` do próprio rival.
-            "gap_to_car_behind": rival.gap_to_ahead if rival else None,
+            # Gap físico do rival até este piloto, em segundos.
+            "gap_to_car_behind": (self._gap_to_rival_behind_s(driver, rival) if rival else None),
             "rival_behind_pitted": bool(
                 rival
                 and (
@@ -544,7 +681,7 @@ class RaceEngine:
                 self.rng,
                 grip_factor=max(0.15, min(1.0, grip)),
                 weather=self.incident_weather,
-                aggression=self._aggression_for(driver.team),
+                aggression=self._aggression_for(driver.driver_id),
             )
             if incident is not None:
                 incidents.append(incident)
@@ -667,6 +804,7 @@ class RaceEngine:
             if gap_ahead is not None:
                 driver.gap_to_ahead = gap_ahead
 
+            total_antes = driver.total_distance_covered
             janela_m = gap_lider * v_ref
             if driver.current_lap == lider.current_lap:
                 if lider.lap_distance_covered >= janela_m:
@@ -693,6 +831,15 @@ class RaceEngine:
                 driver.total_distance_covered = target_total
                 driver.current_lap = int(target_total // self.track_length)
                 driver.lap_distance_covered = float(target_total % self.track_length)
+
+            # Compensa o salto espacial no relógio da volta em curso para que a
+            # compressão do pelotão sob SC não registre uma volta artificialmente
+            # rápida (ex.: 35-40s) como `fastest_lap` ao cruzar a linha.
+            salto_m = driver.total_distance_covered - total_antes
+            if salto_m > 0.0 and driver.lap_time_sum > 0.0:
+                driver.lap_time_sum = max(
+                    0.0, driver.lap_time_sum - min(salto_m, self.track_length) / v_ref
+                )
 
     def step_lap(self) -> None:
         """Avança ticks até que a próxima volta seja concluída pelo líder (lote)."""

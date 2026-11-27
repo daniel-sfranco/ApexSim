@@ -43,7 +43,7 @@ RaceControlState = Literal["GREEN", "VSC", "SC"]
 # docs/fisica.md Seção 5.4 [25]): lambda_base = 2.4e-7 /m produz, na média dos 3
 # circuitos do projeto (20 carros x 58 voltas), ~0.9–1.2 SC/corrida e ~0.8–1.0 VSC/corrida,
 # com maior incidência de SC em Mônaco (escapatórias em muro) que em Interlagos e Monza.
-BASE_INCIDENT_INTENSITY_PER_M = 2.4e-7
+BASE_INCIDENT_INTENSITY_PER_M = 1.8e-7
 
 # Amplificação de risco por severidade de frenagem w_braking(s) = 1 + gamma_1 (Eq. 259).
 # Hipótese calibrada para concentrar ~65-75% dos incidentes nas zonas de desaceleração.
@@ -66,7 +66,7 @@ LOGIT_SC_INTERCEPT = -1.2
 RUNOFF_SC_LOGIT: dict[str, float] = {
     "asfalto": -0.7,
     "brita": 1.4,
-    "muro": 2.0,
+    "muro": 1.45,
 }
 SEVERITY_SC_LOGIT: dict[str, float] = {
     "baixa": -0.3,

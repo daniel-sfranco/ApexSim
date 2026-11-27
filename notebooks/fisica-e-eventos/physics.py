@@ -7,7 +7,7 @@ _BACKEND_DIR = Path(__file__).resolve().parents[2] / "backend"
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-from sim.physics import (  # noqa: E402, F401
+from sim.physics import (  # noqa: F401
     DIRTY_AIR_CUTOFF_S,
     DIRTY_AIR_DECAY_S,
     DIRTY_AIR_MAX_DOWNFORCE_LOSS,
