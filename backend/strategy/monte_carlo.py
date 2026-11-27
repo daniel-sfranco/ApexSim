@@ -329,7 +329,7 @@ class MonteCarloStrategyOptimizer(PitStrategyHeuristic):
     ) -> tuple[StrategyCandidate, list[StrategyCandidate], list[StrategyCandidate]]:
         """Executa K rollouts com Common Random Numbers (CRN) para todos os candidatos."""
         aggression_factor = 1.25 - (0.50 * aggression)
-        min_sc_age = int(14 - (aggression * 6))
+        min_sc_age = self._min_sc_tyre_age(compound, aggression)
         is_in_sc_window = is_sc_pit_window and tyre_age >= min_sc_age
         eff_pit_loss = (
             pit_lane_loss_s * SAFETY_CAR_COST_FACTOR if is_sc_pit_window else pit_lane_loss_s

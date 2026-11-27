@@ -14,6 +14,7 @@ from sim.overtaking import (
     OVERTAKE_DRS_WEIGHT,
     OVERTAKE_MAX_GAP_S,
     OVERTAKE_MAX_ZONE_PROBABILITY,
+    circuit_overtake_multiplier,
     compound_name,
     difficulty_weight,
     estimate_lap_time,
@@ -79,6 +80,13 @@ def test_difficulty_weight():
     assert difficulty_weight("alta") == pytest.approx(0.7)
     assert difficulty_weight(None) == pytest.approx(1.0)
     assert difficulty_weight("desconhecida") == pytest.approx(1.0)
+
+
+def test_circuit_overtake_multiplier():
+    assert circuit_overtake_multiplier("monza") > circuit_overtake_multiplier("interlagos")
+    assert circuit_overtake_multiplier("monaco") < circuit_overtake_multiplier("monza")
+    assert circuit_overtake_multiplier("circuito_desconhecido") == pytest.approx(1.0)
+    assert circuit_overtake_multiplier(None) == pytest.approx(1.0)
 
 
 def test_zone_difficulty_prefers_explicit_prop():

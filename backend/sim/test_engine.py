@@ -558,6 +558,33 @@ def test_safety_car_compression_with_different_laps_no_negative_lap_time():
     assert per.lap_distance_covered > 1900.0
 
 
+def test_safety_car_compression_compensates_lap_clock():
+    """Saltar distância na compressão do SC compensa `lap_time_sum` para evitar voltas falsas."""
+    state = montar_grid_inicial(grid=["VER", "HAM"], track_length=4000.0)
+    state.total_laps = 20
+    engine = RaceEngine(race_state=state, track_length=4000.0, seed=42)
+
+    ver = state.drivers["VER"]
+    ham = state.drivers["HAM"]
+    ver.current_lap = 5
+    ver.lap_distance_covered = 2000.0
+    ver.total_distance_covered = 5 * 4000.0 + 2000.0
+    ver.lap_time_sum = 350.0
+
+    # HAM está 1500m atrás do líder na mesma volta
+    ham.current_lap = 5
+    ham.lap_distance_covered = 500.0
+    ham.total_distance_covered = 5 * 4000.0 + 500.0
+    ham.lap_time_sum = 375.0
+
+    engine._compress_field()
+
+    # HAM avançou ~1470m e seu relógio foi recuado proporcionalmente (~24s),
+    # impedindo que a volta do SC feche em ~35s artificiais.
+    assert ham.lap_distance_covered > 1900.0
+    assert ham.lap_time_sum < 375.0 - 20.0
+
+
 def test_step_tick_samples_incidents_on_lap_crossing(monkeypatch):
     """Um cruzamento de linha dispara a amostragem de incidentes do piloto."""
     mapa = TrackMap.load("interlagos")

@@ -34,7 +34,7 @@ UNDERCUT_MIN_AGE: int = 10  # Idade mínima de pneu (voltas) para justificar res
 PACE_SPREAD_MS: float = 0.5
 
 # Desvio relativo máximo na curva de degradação (gestão de pneu do piloto).
-TYRE_MANAGEMENT_SPREAD: float = 0.10
+TYRE_MANAGEMENT_SPREAD: float = 0.13
 
 # Desvio máximo do tempo de pit crew por piloto, em segundos.
 PIT_CREW_SPREAD_S: float = 0.8
@@ -43,7 +43,7 @@ PIT_CREW_SPREAD_S: float = 0.8
 PIT_STOP_NOISE_S: float = 0.3
 
 # Desvio máximo de agressividade somado à base da equipe.
-AGGRESSION_JITTER: float = 0.10
+AGGRESSION_JITTER: float = 0.13
 
 # Gate do motor para a reação de undercut: só reage a um rival de fato próximo
 # (mais restrito que o limiar da heurística), que já concluiu a parada na volta

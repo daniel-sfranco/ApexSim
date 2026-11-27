@@ -518,6 +518,23 @@ class RaceEngine:
             if not (na_janela_de_pit and driver.current_lap >= 2):
                 continue
 
+            driver_adapter = self._strategy_driver_state(driver, ativos, posicoes)
+            eval_key = (
+                driver.current_lap,
+                self.state.track_status,
+                self.heuristic_weather,
+                driver_adapter["rival_behind_pitted"],
+                driver.tyre_compound,
+                driver.tyre_age,
+            )
+            if self._last_pit_eval_key.get(driver.driver_id) == eval_key:
+                continue
+            self._last_pit_eval_key[driver.driver_id] = eval_key
+
+            profile = self.driver_profiles.get(driver.driver_id)
+            pit_loss_for_decision = self.pit_lane_loss_s + (
+                profile.pit_crew_delta_s if profile else 0.0
+            )
             decision = self.pit_heuristic.evaluate_driver(
                 driver_state=driver_adapter,
                 race_state=race_adapter,
@@ -787,6 +804,7 @@ class RaceEngine:
             if gap_ahead is not None:
                 driver.gap_to_ahead = gap_ahead
 
+            total_antes = driver.total_distance_covered
             janela_m = gap_lider * v_ref
             if driver.current_lap == lider.current_lap:
                 if lider.lap_distance_covered >= janela_m:
@@ -813,6 +831,15 @@ class RaceEngine:
                 driver.total_distance_covered = target_total
                 driver.current_lap = int(target_total // self.track_length)
                 driver.lap_distance_covered = float(target_total % self.track_length)
+
+            # Compensa o salto espacial no relógio da volta em curso para que a
+            # compressão do pelotão sob SC não registre uma volta artificialmente
+            # rápida (ex.: 35-40s) como `fastest_lap` ao cruzar a linha.
+            salto_m = driver.total_distance_covered - total_antes
+            if salto_m > 0.0 and driver.lap_time_sum > 0.0:
+                driver.lap_time_sum = max(
+                    0.0, driver.lap_time_sum - min(salto_m, self.track_length) / v_ref
+                )
 
     def step_lap(self) -> None:
         """Avança ticks até que a próxima volta seja concluída pelo líder (lote)."""
