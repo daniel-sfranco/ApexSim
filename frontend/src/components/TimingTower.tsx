@@ -142,10 +142,18 @@ export const TimingTower: React.FC<TimingTowerProps> = ({
               >
                 <span
                   className={`font-semibold ${
-                    isLeader ? "text-amber-400 font-bold" : "text-slate-300"
+                    driver.is_retired
+                      ? "text-rose-400 font-bold uppercase"
+                      : isLeader
+                      ? "text-amber-400 font-bold"
+                      : "text-slate-300"
                   }`}
                 >
-                  {isLeader ? "LÍDER" : formatGap(driver.gap_to_leader)}
+                  {driver.is_retired
+                    ? "RETIRED"
+                    : isLeader
+                    ? "LÍDER"
+                    : formatGap(driver.gap_to_leader)}
                 </span>
               </div>
 
