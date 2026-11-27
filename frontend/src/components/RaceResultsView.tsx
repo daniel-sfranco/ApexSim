@@ -1,16 +1,11 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { getRaceResults } from "@/lib/api";
-import {
-  RaceResultsResponse,
-  DriverFinalResult,
-  EnrichedDriverState,
-} from "@/types";
+import { RaceResultsResponse, DriverFinalResult, EnrichedDriverState } from "@/types";
 import { formatLapTime, formatGap } from "@/lib/constants";
 import {
   Trophy,
   Medal,
-  Flag,
   RotateCcw,
   PlusCircle,
   Clock,
@@ -59,10 +54,7 @@ export const RaceResultsView: React.FC<RaceResultsViewProps> = ({
       })
       .catch((err) => {
         if (!isMounted) return;
-        console.warn(
-          `[RaceResultsView] Não foi possível carregar resultados da API para ${raceId}:`,
-          err,
-        );
+        console.warn(`[RaceResultsView] Não foi possível carregar resultados da API para ${raceId}:`, err);
         setApiError(true);
         setLoading(false);
       });
@@ -116,9 +108,16 @@ export const RaceResultsView: React.FC<RaceResultsViewProps> = ({
             <h2 className="text-lg font-bold uppercase tracking-wider text-white flex items-center gap-2">
               Classificação Oficial da Corrida
             </h2>
-            <p className="text-xs text-f1-muted">
-              {circuitName} ({circuitId}) • {totalLaps} Voltas Concluídas
-              {results ? " • Validado via API" : " • Telemetria em Tempo Real"}
+            <p className="text-xs text-f1-muted flex items-center gap-1.5 flex-wrap">
+              <span>{circuitName} ({circuitId}) • {totalLaps} Voltas Concluídas</span>
+              {loading && (
+                <span className="text-amber-400 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full border border-amber-400 border-t-transparent animate-spin" />
+                  • Carregando classificação oficial...
+                </span>
+              )}
+              {!loading && results && <span>• Validado via API</span>}
+              {!loading && !results && <span>• Telemetria em Tempo Real</span>}
             </p>
           </div>
         </div>
@@ -136,18 +135,24 @@ export const RaceResultsView: React.FC<RaceResultsViewProps> = ({
         </div>
       </div>
 
+      {/* Alerta de Falha na API */}
+      {apiError && (
+        <div className="bg-amber-950/40 border border-amber-600/50 text-amber-300 px-3 py-2 rounded-lg text-xs font-mono flex items-center gap-2 mt-3">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>
+            Não foi possível obter a classificação via API. Exibindo telemetria da sessão local.
+          </span>
+        </div>
+      )}
+
       {/* Pódio dos 3 Primeiros */}
       {winner && (
         <div className="grid grid-cols-3 gap-3 my-4">
           {/* P2 */}
           <div className="bg-f1-card border border-slate-700/60 rounded-lg p-3 text-center flex flex-col items-center justify-center order-1">
             <Medal className="w-5 h-5 text-slate-300 mb-1" />
-            <span className="text-[10px] text-slate-400 uppercase font-bold">
-              2º Lugar
-            </span>
-            <span className="font-bold text-sm text-slate-100">
-              {second?.name || second?.driver_id}
-            </span>
+            <span className="text-[10px] text-slate-400 uppercase font-bold">2º Lugar</span>
+            <span className="font-bold text-sm text-slate-100">{second?.name || second?.driver_id}</span>
             <span className="text-[11px] text-f1-muted">{second?.team}</span>
             <span className="text-xs text-amber-300 font-semibold mt-1">
               {formatGap(second?.gap_to_leader)}
@@ -160,28 +165,18 @@ export const RaceResultsView: React.FC<RaceResultsViewProps> = ({
             <span className="text-xs text-amber-400 uppercase font-extrabold tracking-widest">
               Vencedor
             </span>
-            <span className="font-bold text-base text-white">
-              {winner.name || winner.driver_id}
-            </span>
-            <span className="text-xs text-amber-200/80 font-medium">
-              {winner.team}
-            </span>
+            <span className="font-bold text-base text-white">{winner.name || winner.driver_id}</span>
+            <span className="text-xs text-amber-200/80 font-medium">{winner.team}</span>
             <span className="text-xs text-emerald-400 font-bold mt-1">
-              {winner.total_race_time > 0
-                ? formatLapTime(winner.total_race_time)
-                : "VENCEDOR"}
+              {winner.total_race_time > 0 ? formatLapTime(winner.total_race_time) : "VENCEDOR"}
             </span>
           </div>
 
           {/* P3 */}
           <div className="bg-f1-card border border-amber-800/40 rounded-lg p-3 text-center flex flex-col items-center justify-center order-3">
             <Medal className="w-5 h-5 text-amber-600 mb-1" />
-            <span className="text-[10px] text-amber-600 uppercase font-bold">
-              3º Lugar
-            </span>
-            <span className="font-bold text-sm text-slate-100">
-              {third?.name || third?.driver_id}
-            </span>
+            <span className="text-[10px] text-amber-600 uppercase font-bold">3º Lugar</span>
+            <span className="font-bold text-sm text-slate-100">{third?.name || third?.driver_id}</span>
             <span className="text-[11px] text-f1-muted">{third?.team}</span>
             <span className="text-xs text-amber-300 font-semibold mt-1">
               {formatGap(third?.gap_to_leader)}
@@ -196,9 +191,7 @@ export const RaceResultsView: React.FC<RaceResultsViewProps> = ({
           <div className="flex items-center gap-2 text-purple-300">
             <Clock className="w-3.5 h-3.5 text-purple-400" />
             <span>Volta Mais Rápida da Prova:</span>
-            <span className="font-bold text-white">
-              {overallFastestLap.driver}
-            </span>
+            <span className="font-bold text-white">{overallFastestLap.driver}</span>
           </div>
           <span className="font-bold text-purple-300">
             {formatLapTime(overallFastestLap.time)}
@@ -233,10 +226,10 @@ export const RaceResultsView: React.FC<RaceResultsViewProps> = ({
                       d.position === 1
                         ? "text-amber-400"
                         : d.position === 2
-                          ? "text-slate-300"
-                          : d.position === 3
-                            ? "text-amber-600"
-                            : "text-white"
+                        ? "text-slate-300"
+                        : d.position === 3
+                        ? "text-amber-600"
+                        : "text-white"
                     }
                   >
                     {d.position}
@@ -246,9 +239,7 @@ export const RaceResultsView: React.FC<RaceResultsViewProps> = ({
 
               <div className="col-span-4 flex items-center gap-2 overflow-hidden">
                 <span className="font-bold text-white">{d.driver_id}</span>
-                <span className="text-slate-300 truncate text-[11px]">
-                  {d.name}
-                </span>
+                <span className="text-slate-300 truncate text-[11px]">{d.name}</span>
               </div>
 
               <div className="col-span-3 text-f1-muted truncate text-[11px]">

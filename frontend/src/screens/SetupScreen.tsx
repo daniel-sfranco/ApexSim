@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { SetupForm } from "@/components/SetupForm";
+import { getApiBaseUrl } from "@/lib/api";
 import { Activity, Compass } from "lucide-react";
 
 export const SetupScreen: React.FC = () => {
@@ -13,10 +14,7 @@ export const SetupScreen: React.FC = () => {
             <span className="w-3 h-8 bg-f1-red rounded-sm"></span>
             <div>
               <h1 className="text-xl font-bold font-mono tracking-wider uppercase text-white flex items-center gap-2">
-                ApexSim{" "}
-                <span className="text-xs px-2 py-0.5 rounded bg-f1-card text-f1-muted font-normal">
-                  F1 Simulator
-                </span>
+                ApexSim <span className="text-xs px-2 py-0.5 rounded bg-f1-card text-f1-muted font-normal">F1 Simulator</span>
               </h1>
               <p className="text-xs text-f1-muted font-mono">
                 Configuração de Prova • Marcos M0 & M1
@@ -26,7 +24,7 @@ export const SetupScreen: React.FC = () => {
 
           <div className="flex items-center gap-3 text-xs font-mono">
             <a
-              href="http://localhost:8000/admin/track-editor"
+              href={`${getApiBaseUrl()}/admin/track-editor`}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-f1-card hover:bg-f1-border border border-f1-border text-slate-300 hover:text-white transition-colors"
@@ -54,8 +52,7 @@ export const SetupScreen: React.FC = () => {
             Configuração da Corrida
           </h2>
           <p className="text-sm text-f1-muted">
-            Defina o circuito, condições meteorológicas, grid de largada e
-            compostos iniciais.
+            Defina o circuito, condições meteorológicas, grid de largada e compostos iniciais.
           </p>
         </div>
 
