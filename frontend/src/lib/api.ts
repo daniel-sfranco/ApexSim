@@ -41,7 +41,7 @@ export async function checkHealth(): Promise<{ status: string }> {
  * Criação de uma nova corrida (POST /api/races)
  */
 export async function createRace(
-  request: CreateRaceRequest
+  request: CreateRaceRequest,
 ): Promise<CreateRaceResponse> {
   const url = `${getApiBaseUrl()}/api/races`;
   const res = await fetch(url, {
@@ -58,9 +58,10 @@ export async function createRace(
     try {
       const errJson = await res.json();
       if (errJson.detail) {
-        errorDetail = typeof errJson.detail === "string"
-          ? errJson.detail
-          : JSON.stringify(errJson.detail);
+        errorDetail =
+          typeof errJson.detail === "string"
+            ? errJson.detail
+            : JSON.stringify(errJson.detail);
       }
     } catch {
       // ignore
@@ -75,7 +76,7 @@ export async function createRace(
  * Consulta de estado da corrida (GET /api/races/{race_id})
  */
 export async function getRaceDetails(
-  raceId: string
+  raceId: string,
 ): Promise<RaceDetailsResponse> {
   const url = `${getApiBaseUrl()}/api/races/${raceId}`;
   const res = await fetch(url);
@@ -89,7 +90,7 @@ export async function getRaceDetails(
  * Classificação calculada e analytics pós-corrida (GET /api/races/{race_id}/results)
  */
 export async function getRaceResults(
-  raceId: string
+  raceId: string,
 ): Promise<RaceResultsResponse> {
   const url = `${getApiBaseUrl()}/api/races/${raceId}/results`;
   const res = await fetch(url);
@@ -103,7 +104,7 @@ export async function getRaceResults(
  * Geometria pura do circuito (GET /circuits/{circuit_id}.json)
  */
 export async function getCircuitGeometry(
-  circuitId: string
+  circuitId: string,
 ): Promise<CircuitGeometry> {
   // Tenta carregar primeiro da API, depois fallback para o asset público local
   const urls = [

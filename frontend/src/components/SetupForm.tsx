@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useRaceStore } from "@/store/raceStore";
 import { CIRCUITS, DEFAULT_DRIVERS, TYRE_INFO } from "@/lib/constants";
+import { TyreCompound, WeatherCondition, CreateRaceRequest } from "@/types";
+import { checkHealth, createRace } from "@/lib/api";
 import { TyreCompound, WeatherCondition, CreateRaceRequest } from "@/types";
 import { checkHealth, createRace } from "@/lib/api";
 import {
@@ -12,6 +15,9 @@ import {
   Flag,
   CloudSun,
   ArrowRight,
+  Server,
+  CheckCircle2,
+  AlertTriangle,
   Server,
   CheckCircle2,
   AlertTriangle,
@@ -91,9 +97,11 @@ export const SetupForm: React.FC = () => {
   };
 
   // Submissão do Setup com Integração à API POST /api/races
+  // Submissão do Setup com Integração à API POST /api/races
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsStarting(true);
+    setStatusMessage(null);
     setStatusMessage(null);
 
     const circuitObj = CIRCUITS.find((c) => c.id === selectedCircuit);
@@ -135,6 +143,27 @@ export const SetupForm: React.FC = () => {
         targetRaceId = apiResponse.race_id;
         console.log(
           `[SetupForm] Corrida criada no backend com ID: ${targetRaceId}`,
+    let targetRaceId = "race-" + Math.random().toString(36).substring(2, 9);
+
+    const requestBody: CreateRaceRequest = {
+      circuit_id: selectedCircuit,
+      total_laps: Number(totalLaps),
+      seed: Number(seed),
+      weather,
+      track_temp: Number(trackTemp),
+      grid,
+      // Apenas pilotos presentes no grid, como exige o contrato da API.
+      initial_tyres: Object.fromEntries(
+        Object.entries(startingTyres).filter(([code]) => grid.includes(code)),
+      ),
+    };
+
+    try {
+      const apiResponse = await createRace(requestBody);
+      if (typeof apiResponse?.race_id === "string" && apiResponse.race_id) {
+        targetRaceId = apiResponse.race_id;
+        console.log(
+          `[SetupForm] Corrida criada no backend com ID: ${targetRaceId}`,
         );
       }
     } catch (err: any) {
@@ -145,8 +174,19 @@ export const SetupForm: React.FC = () => {
       setStatusMessage(
         "API backend offline ou indisponível. Iniciando cockpit em modo de simulação autônoma...",
       );
+    } catch (err: any) {
+      console.warn(
+        "[SetupForm] API backend não respondeu; usando corrida em memória:",
+        err?.message || err,
+      );
+      setStatusMessage(
+        "API backend offline ou indisponível. Iniciando cockpit em modo de simulação autônoma...",
+      );
     }
 
+    setTimeout(() => {
+      navigate(`/race/${targetRaceId}`);
+    }, 400);
     setTimeout(() => {
       navigate(`/race/${targetRaceId}`);
     }, 400);
@@ -243,7 +283,29 @@ export const SetupForm: React.FC = () => {
             2. Condições da Pista e Simulação
           </h2>
         </div>
+      <section className="bg-f1-surface border border-f1-border rounded-xl p-6 shadow-xl">
+        <div className="flex items-center gap-2 mb-4">
+          <CloudSun className="w-5 h-5 text-f1-red" />
+          <h2 className="text-lg font-bold text-white uppercase tracking-wider font-mono">
+            2. Condições da Pista e Simulação
+          </h2>
+        </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 font-mono text-sm">
+          {/* Voltas Totais */}
+          <div>
+            <label className="block text-xs text-f1-muted uppercase mb-2">
+              Voltas Totais
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              value={totalLaps}
+              onChange={(e) => setTotalLaps(Number(e.target.value))}
+              className="w-full bg-f1-card border border-f1-border rounded px-3 py-2 text-white focus:outline-none focus:border-f1-red"
+            />
+          </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 font-mono text-sm">
           {/* Voltas Totais */}
           <div>
@@ -274,8 +336,36 @@ export const SetupForm: React.FC = () => {
               <option value="DAMP">Úmido (Damp)</option>
               <option value="WET">Chuva (Pista Molhada)</option>
             </select>
+          {/* Clima */}
+          <div>
+            <label className="block text-xs text-f1-muted uppercase mb-2">
+              Clima Predominante
+            </label>
+            <select
+              value={weather}
+              onChange={(e) => setWeather(e.target.value as WeatherCondition)}
+              className="w-full bg-f1-card border border-f1-border rounded px-3 py-2 text-white focus:outline-none focus:border-f1-red"
+            >
+              <option value="DRY">Seco (Pista Seca)</option>
+              <option value="DAMP">Úmido (Damp)</option>
+              <option value="WET">Chuva (Pista Molhada)</option>
+            </select>
           </div>
 
+          {/* Temperatura da Pista */}
+          <div>
+            <label className="block text-xs text-f1-muted uppercase mb-2">
+              Temp. da Pista (°C)
+            </label>
+            <input
+              type="number"
+              min={10}
+              max={60}
+              value={trackTemp}
+              onChange={(e) => setTrackTemp(Number(e.target.value))}
+              className="w-full bg-f1-card border border-f1-border rounded px-3 py-2 text-white focus:outline-none focus:border-f1-red"
+            />
+          </div>
           {/* Temperatura da Pista */}
           <div>
             <label className="block text-xs text-f1-muted uppercase mb-2">
@@ -302,16 +392,30 @@ export const SetupForm: React.FC = () => {
               onChange={(e) => setSeed(Number(e.target.value))}
               className="w-full bg-f1-card border border-f1-border rounded px-3 py-2 text-white focus:outline-none focus:border-f1-red"
             />
+          {/* Seed Aleatório */}
+          <div>
+            <label className="block text-xs text-f1-muted uppercase mb-2">
+              Seed Determinística
+            </label>
+            <input
+              type="number"
+              value={seed}
+              onChange={(e) => setSeed(Number(e.target.value))}
+              className="w-full bg-f1-card border border-f1-border rounded px-3 py-2 text-white focus:outline-none focus:border-f1-red"
+            />
           </div>
         </div>
       </section>
 
       {/* 3. GRID DE LARGADA E ESTRATÉGIA INICIAL */}
+      {/* 3. GRID DE LARGADA E ESTRATÉGIA INICIAL */}
       <section className="bg-f1-surface border border-f1-border rounded-xl p-6 shadow-xl">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Trophy className="w-5 h-5 text-f1-red" />
+            <Trophy className="w-5 h-5 text-f1-red" />
             <h2 className="text-lg font-bold text-white uppercase tracking-wider font-mono">
+              3. Grid de Largada e Compostos Iniciais (20 Pilotos)
               3. Grid de Largada e Compostos Iniciais (20 Pilotos)
             </h2>
           </div>
@@ -320,7 +424,10 @@ export const SetupForm: React.FC = () => {
             type="button"
             onClick={handleShuffleGrid}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-f1-card hover:bg-f1-border border border-f1-border text-xs font-mono text-slate-300 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-f1-card hover:bg-f1-border border border-f1-border text-xs font-mono text-slate-300 hover:text-white transition-colors"
           >
+            <Shuffle className="w-3.5 h-3.5 text-amber-400" />
+            Sortear Posições
             <Shuffle className="w-3.5 h-3.5 text-amber-400" />
             Sortear Posições
           </button>
@@ -340,19 +447,32 @@ export const SetupForm: React.FC = () => {
               teamColor: "#8E9AA8",
               defaultTyre: "MEDIUM" as TyreCompound,
             };
+            const driverInfo = DEFAULT_DRIVERS.find((d) => d.code === code) || {
+              code,
+              name: code,
+              team: "Independente",
+              teamColor: "#8E9AA8",
+              defaultTyre: "MEDIUM" as TyreCompound,
+            };
             const currentTyre = startingTyres[code] || driverInfo.defaultTyre;
 
             return (
               <div
                 key={code}
                 className="flex items-center justify-between p-2.5 rounded-lg bg-f1-dark/80 border border-f1-border/60 hover:border-slate-500 transition-colors text-xs"
+                className="flex items-center justify-between p-2.5 rounded-lg bg-f1-dark/80 border border-f1-border/60 hover:border-slate-500 transition-colors text-xs"
               >
+                {/* Posição e Nome */}
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <span className="font-bold text-f1-muted w-5 text-center">
+                    {idx + 1}º
                 {/* Posição e Nome */}
                 <div className="flex items-center gap-2 overflow-hidden">
                   <span className="font-bold text-f1-muted w-5 text-center">
                     {idx + 1}º
                   </span>
                   <div
+                    className="w-1.5 h-5 rounded-full flex-shrink-0"
                     className="w-1.5 h-5 rounded-full flex-shrink-0"
                     style={{ backgroundColor: driverInfo.teamColor }}
                   />
@@ -368,7 +488,7 @@ export const SetupForm: React.FC = () => {
                 <div className="flex items-center gap-2">
                   {/* Pneu */}
                   <div className="flex items-center gap-1">
-                    {(["SOFT", "MEDIUM", "HARD"] as TyreCompound[]).map((t) => {
+                    {availableTyres.map((t) => {
                       const tInfo = TYRE_INFO[t];
                       const active = currentTyre === t;
                       return (
