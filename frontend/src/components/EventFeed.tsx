@@ -1,6 +1,15 @@
 import React from "react";
 import { useRaceStore } from "@/store/raceStore";
-import { AlertTriangle, Flag, ArrowRightLeft, Wrench, ShieldAlert } from "lucide-react";
+import {
+  AlertTriangle,
+  Flag,
+  ArrowRightLeft,
+  Wrench,
+  ShieldAlert,
+  CloudRain,
+  Flame,
+  XCircle,
+} from "lucide-react";
 
 export const EventFeed: React.FC = () => {
   const { events } = useRaceStore();
@@ -13,7 +22,16 @@ export const EventFeed: React.FC = () => {
         return <Wrench className="w-3.5 h-3.5 text-amber-400" />;
       case "SAFETY_CAR_DEPLOYED":
       case "SAFETY_CAR_IN":
+      case "VSC_DEPLOYED":
         return <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />;
+      case "WEATHER_CHANGED":
+        return <CloudRain className="w-3.5 h-3.5 text-cyan-400" />;
+      case "ACCIDENT":
+        return <Flame className="w-3.5 h-3.5 text-rose-400" />;
+      case "RETIREMENT":
+        return <XCircle className="w-3.5 h-3.5 text-rose-400" />;
+      case "GREEN_FLAG":
+        return <Flag className="w-3.5 h-3.5 text-emerald-400" />;
       case "YELLOW_FLAG":
         return <AlertTriangle className="w-3.5 h-3.5 text-yellow-400" />;
       default:

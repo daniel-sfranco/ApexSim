@@ -1,5 +1,6 @@
 """Testes de integração da ferramenta de anotação de pista (Track Editor)."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.config import CIRCUITS_DIR, TRACK_EDITOR_DIR, TRACK_MAPS_DIR
@@ -67,3 +68,19 @@ def test_save_and_get_track_map_api():
     finally:
         if test_file.exists():
             test_file.unlink()
+
+
+@pytest.mark.parametrize(
+    "invalid_id",
+    ["../../etc/passwd", "MONZA", "monza.json", "a b", "interlagos/../test"],
+)
+def test_circuit_id_validation_rejects_invalid_slugs(invalid_id: str):
+    """circuit_id fora do padrão ^[a-z0-9_]+$ deve ser rejeitado para evitar path traversal."""
+    res_geom = client.get(f"/api/circuits/{invalid_id}")
+    assert res_geom.status_code in (400, 404, 422)
+
+    res_get_map = client.get(f"/api/track-maps/{invalid_id}")
+    assert res_get_map.status_code in (400, 404, 422)
+
+    res_post_map = client.post(f"/api/track-maps/{invalid_id}", json={"circuit_id": invalid_id})
+    assert res_post_map.status_code in (400, 404, 422)
