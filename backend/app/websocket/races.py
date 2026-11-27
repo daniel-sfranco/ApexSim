@@ -36,6 +36,7 @@ from sim.engine import RaceEngine
 from sim.run import montar_grid_inicial
 from sim.state import LapResult, RaceState
 from sim.track import TrackMap
+from strategy.heuristic import PitStrategyHeuristic
 
 logger = logging.getLogger("apexsim.websocket")
 
@@ -146,6 +147,7 @@ def get_or_create_engine(
     force_new: bool = False,
     circuit_id: str = "interlagos",
     gravador: GravadorDeCorrida | None = None,
+    pit_heuristic: PitStrategyHeuristic | None = None,
 ) -> RaceEngine:
     """Recupera a instância ativa do RaceEngine ou inicializa uma nova para a corrida.
 
@@ -193,6 +195,7 @@ def get_or_create_engine(
             track_temp=track_temp,
             broadcast_fn=_broadcast,
             track_map=track_map,
+            pit_heuristic=pit_heuristic,
             **(_recording_hooks(race_id, gravador) if gravador is not None else {}),
         )
         if gravador is not None:

@@ -22,7 +22,8 @@ from sim.realtime_loop import run_realtime_loop
 from sim.run import montar_grid_inicial
 from sim.state import PitStatus, TrackStatus, TyreCompound
 from sim.track import TrackMap
-from strategy.heuristic import PitDecision
+from strategy.heuristic import PitDecision, PitStrategyHeuristic
+from strategy.monte_carlo import MonteCarloStrategyOptimizer
 
 
 @pytest.fixture
@@ -877,3 +878,64 @@ def test_incidentes_usam_grip_combinado_de_pneu_e_clima(monkeypatch):
     assert grips_recebidos["VER"] < grips_recebidos["NOR"]
     assert grips_recebidos["VER"] <= 0.30
     assert grips_recebidos["NOR"] >= 0.80
+
+
+def test_engine_usa_monte_carlo_por_padrao_e_aceita_injecao():
+    """RaceEngine usa MonteCarloStrategyOptimizer por padrão sincronizado com seed/clima."""
+    engine_padrao = RaceEngine(
+        race_state=montar_grid_inicial(grid=["VER"]),
+        seed=99,
+        dynamic_weather=True,
+    )
+    assert isinstance(engine_padrao.pit_heuristic, MonteCarloStrategyOptimizer)
+    assert engine_padrao.pit_heuristic.dynamic_weather is True
+
+    heuristica = PitStrategyHeuristic()
+    engine_custom = RaceEngine(
+        race_state=montar_grid_inicial(grid=["VER"]),
+        pit_heuristic=heuristica,
+    )
+    assert engine_custom.pit_heuristic is heuristica
+
+
+def test_evaluate_pit_stops_nao_reavalia_mesmo_contexto_na_janela(monkeypatch):
+    """Evita reexecutar Monte Carlo em todo tick dentro da mesma janela, mas reage a eventos."""
+    state = montar_grid_inicial(grid=["VER", "NOR"], track_length=4000.0)
+    engine = RaceEngine(race_state=state, track_length=4000.0, base_lap_delay=0.01)
+
+    ver = state.drivers["VER"]
+    nor = state.drivers["NOR"]
+    ver.current_lap = 10
+    ver.lap_distance_covered = 3600.0  # dentro da janela de pit (> 85%)
+    nor.current_lap = 10
+    nor.lap_distance_covered = 1000.0  # fora da janela de pit
+
+    chamadas = 0
+
+    def spy_evaluate(**_kwargs: Any) -> PitDecision:
+        nonlocal chamadas
+        chamadas += 1
+        return PitDecision(should_pit=False, reason="STAY_OUT")
+
+    monkeypatch.setattr(engine.pit_heuristic, "evaluate_driver", spy_evaluate)
+
+    # Três ticks seguidos no mesmo contexto: avalia apenas uma vez.
+    engine._evaluate_pit_stops()
+    engine._evaluate_pit_stops()
+    engine._evaluate_pit_stops()
+    assert chamadas == 1
+
+    # Safety Car muda o contexto estratégico: deve reavaliar imediatamente.
+    state.track_status = TrackStatus.SAFETY_CAR
+    engine._evaluate_pit_stops()
+    assert chamadas == 2
+
+    # Mudança de clima também dispara reavaliação imediata.
+    engine.weather = "DAMP"
+    engine._evaluate_pit_stops()
+    assert chamadas == 3
+
+    # Nova volta dispara nova avaliação.
+    ver.current_lap = 11
+    engine._evaluate_pit_stops()
+    assert chamadas == 4
