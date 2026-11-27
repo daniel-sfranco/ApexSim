@@ -54,9 +54,6 @@ OVERTAKE_MAX_ZONE_PROBABILITY = 0.90
 # Gap máximo (s) para considerar que o atacante está ao alcance de uma passada.
 OVERTAKE_MAX_GAP_S = 0.8
 
-# Volta mínima (largada não conta como oportunidade de ultrapassagem).
-OVERTAKE_MIN_LAP = 0
-
 # Sensibilidade ao diferencial de ritmo (s/volta) e limites do multiplicador.
 OVERTAKE_PACE_EXPONENT = 1.2
 OVERTAKE_PACE_MIN = 0.05
@@ -281,8 +278,6 @@ def sample_overtake(
         if attacker.overtake_cooldown_s > 0.0:
             continue
         if attacker.pit_status != PitStatus.NONE or defender.pit_status != PitStatus.NONE:
-            continue
-        if attacker.current_lap < OVERTAKE_MIN_LAP:
             continue
         if attacker.current_lap >= state.total_laps or defender.current_lap >= state.total_laps:
             continue

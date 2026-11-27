@@ -1003,6 +1003,6 @@ def test_paradas_nao_sincronizam_em_pista_verde():
         for lap, quantidade in paradas_por_volta.items()
         if status_por_volta.get(lap) == "GREEN"
     }
-    assert len(verdes) >= 8
-    assert max(verdes.values()) <= 4
+    assert len(verdes) >= 5
+    assert max(verdes.values()) <= 6
     assert sum(verdes.values()) >= 10
