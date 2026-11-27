@@ -6,7 +6,6 @@ import { formatLapTime, formatGap } from "@/lib/constants";
 import {
   Trophy,
   Medal,
-  Flag,
   RotateCcw,
   PlusCircle,
   Clock,
@@ -109,9 +108,16 @@ export const RaceResultsView: React.FC<RaceResultsViewProps> = ({
             <h2 className="text-lg font-bold uppercase tracking-wider text-white flex items-center gap-2">
               Classificação Oficial da Corrida
             </h2>
-            <p className="text-xs text-f1-muted">
-              {circuitName} ({circuitId}) • {totalLaps} Voltas Concluídas
-              {results ? " • Validado via API" : " • Telemetria em Tempo Real"}
+            <p className="text-xs text-f1-muted flex items-center gap-1.5 flex-wrap">
+              <span>{circuitName} ({circuitId}) • {totalLaps} Voltas Concluídas</span>
+              {loading && (
+                <span className="text-amber-400 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full border border-amber-400 border-t-transparent animate-spin" />
+                  • Carregando classificação oficial...
+                </span>
+              )}
+              {!loading && results && <span>• Validado via API</span>}
+              {!loading && !results && <span>• Telemetria em Tempo Real</span>}
             </p>
           </div>
         </div>
@@ -128,6 +134,16 @@ export const RaceResultsView: React.FC<RaceResultsViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Alerta de Falha na API */}
+      {apiError && (
+        <div className="bg-amber-950/40 border border-amber-600/50 text-amber-300 px-3 py-2 rounded-lg text-xs font-mono flex items-center gap-2 mt-3">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>
+            Não foi possível obter a classificação via API. Exibindo telemetria da sessão local.
+          </span>
+        </div>
+      )}
 
       {/* Pódio dos 3 Primeiros */}
       {winner && (

@@ -34,6 +34,12 @@ export const SetupForm: React.FC = () => {
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">("checking");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
+  // Compostos de pneu disponíveis de acordo com a condição climática
+  const availableTyres: TyreCompound[] =
+    weather === "DRY"
+      ? ["SOFT", "MEDIUM", "HARD"]
+      : ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
+
   // Checa status da API backend ao montar o componente
   useEffect(() => {
     checkHealth()
@@ -136,7 +142,6 @@ export const SetupForm: React.FC = () => {
         );
       }
     } catch (err: any) {
-    } catch (err: any) {
       console.warn(
         "[SetupForm] API backend não respondeu; usando corrida em memória:",
         err?.message || err,
@@ -144,7 +149,6 @@ export const SetupForm: React.FC = () => {
       setStatusMessage(
         "API backend offline ou indisponível. Iniciando cockpit em modo de simulação autônoma...",
       );
-      setStatusMessage("API backend offline ou indisponível. Iniciando cockpit em modo de simulação autônoma...");
     }
 
     setTimeout(() => {
@@ -322,7 +326,7 @@ export const SetupForm: React.FC = () => {
         </div>
 
         <p className="text-xs text-f1-muted mb-4 font-mono">
-          Reordene os pilotos para a largada e escolha o composto inicial de cada um (Soft, Medium, Hard).
+          Reordene os pilotos para a largada e escolha o composto inicial de cada um ({weather === "DRY" ? "Soft, Medium, Hard" : "Soft, Medium, Hard, Inter, Wet"}).
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono">
@@ -362,7 +366,7 @@ export const SetupForm: React.FC = () => {
                 <div className="flex items-center gap-2">
                   {/* Pneu */}
                   <div className="flex items-center gap-1">
-                    {(["SOFT", "MEDIUM", "HARD"] as TyreCompound[]).map((t) => {
+                    {availableTyres.map((t) => {
                       const tInfo = TYRE_INFO[t];
                       const active = currentTyre === t;
                       return (

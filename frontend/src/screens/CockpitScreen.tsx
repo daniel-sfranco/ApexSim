@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useRaceWebSocket } from "@/hooks/useRaceWebSocket";
 import { useRaceStore } from "@/store/raceStore";
+import { getRaceDetails } from "@/lib/api";
 import { RaceTopBar } from "@/components/RaceTopBar";
 import { TimingTower } from "@/components/TimingTower";
 import { CircuitCanvas } from "@/components/CircuitCanvas";
@@ -17,10 +18,8 @@ import {
   Table,
   BarChart2,
   X,
-  Gauge,
-  Fuel,
 } from "lucide-react";
-import { TYRE_INFO, formatLapTime, formatGap } from "@/lib/constants";
+import { TYRE_INFO, formatGap } from "@/lib/constants";
 
 type ViewMode = "split" | "track-only" | "tower-only" | "results";
 
@@ -40,7 +39,30 @@ export const CockpitScreen: React.FC = () => {
     currentLapData,
     isFinished,
     connectionStatus,
+    setRaceConfig,
   } = useRaceStore();
+
+  // Sincroniza os detalhes da corrida com o backend caso o usuário dê F5 ou acerte /race/{id} direto
+  useEffect(() => {
+    if (!raceId || raceId === "live") return;
+    let isMounted = true;
+
+    getRaceDetails(raceId)
+      .then((data) => {
+        if (!isMounted) return;
+        setRaceConfig({
+          circuitId: data.circuit_id,
+          totalLaps: data.total_laps,
+        });
+      })
+      .catch((err) => {
+        console.warn(`[CockpitScreen] Não foi possível carregar detalhes da corrida ${raceId}:`, err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [raceId, setRaceConfig]);
 
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);

@@ -3,7 +3,6 @@ import {
   EnrichedDriverState,
   TrackMapData,
   CircuitPoint,
-  TrackZone,
   TrackStatus,
 } from "@/types";
 import { getTrackMap } from "@/lib/api";
@@ -15,10 +14,7 @@ import {
   Tag,
   Flag,
   Zap,
-  Maximize2,
-  Compass,
   X,
-  Gauge,
   Layers,
 } from "lucide-react";
 
@@ -30,12 +26,6 @@ interface CircuitCanvasProps {
   selectedDriverId?: string | null;
   onSelectDriver?: (driverId: string | null) => void;
   className?: string;
-}
-
-interface Point2D {
-  x: number;
-  y: number;
-  distance_m: number;
 }
 
 interface ViewTransform {
@@ -77,6 +67,35 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
   const [startPan, setStartPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [userPan, setUserPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [userZoom, setUserZoom] = useState<number>(1.0);
+
+  // Referências para valores dinâmicos: evita destruir/recriar o rAF a cada tick do WebSocket ou hover
+  const driversRef = useRef(drivers);
+  driversRef.current = drivers;
+
+  const hoveredDriverRef = useRef(hoveredDriver);
+  hoveredDriverRef.current = hoveredDriver;
+
+  const selectedDriverIdRef = useRef(selectedDriverId);
+  selectedDriverIdRef.current = selectedDriverId;
+
+  const userZoomRef = useRef(userZoom);
+  userZoomRef.current = userZoom;
+
+  const userPanRef = useRef(userPan);
+  userPanRef.current = userPan;
+
+  const viewOptionsRef = useRef({
+    showTags,
+    showCorners,
+    showDRSZones,
+    showSectors,
+  });
+  viewOptionsRef.current = {
+    showTags,
+    showCorners,
+    showDRSZones,
+    showSectors,
+  };
 
   // Posições animadas suavizadas dos carros (distância interpolada continuamente a 60fps)
   const animDistancesRef = useRef<Record<string, number>>({});
@@ -269,6 +288,19 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       const fittedHeight = trackBounds.height * baseScale;
       const offsetX = (width - fittedWidth) / 2;
       const offsetY = (height - fittedHeight) / 2;
+
+      // Valores dinâmicos extraídos via ref para o frame atual
+      const userZoom = userZoomRef.current;
+      const userPan = userPanRef.current;
+      const {
+        showTags,
+        showCorners,
+        showDRSZones,
+        showSectors,
+      } = viewOptionsRef.current;
+      const currentDrivers = driversRef.current;
+      const hoveredDriver = hoveredDriverRef.current;
+      const selectedDriverId = selectedDriverIdRef.current;
 
       const transform: ViewTransform = {
         scale: baseScale,
@@ -487,10 +519,10 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
       // 6. CARROS E PILOTOS (Interpolação suave a 60 FPS)
       // -------------------------------------------------------------
       const currentAnimDistances = animDistancesRef.current;
-      const sortedDrivers = [...drivers].sort((a, b) => b.position - a.position); // P1 desenhado por último para ficar por cima
+      const sortedDrivers = [...currentDrivers].sort((a, b) => b.position - a.position); // P1 desenhado por último para ficar por cima
 
       // Atualiza distâncias interpoladas
-      drivers.forEach((d) => {
+      currentDrivers.forEach((d) => {
         const targetD = d.distance_m || 0;
         const currentD = currentAnimDistances[d.driver_id] ?? targetD;
 
@@ -627,19 +659,27 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     };
   }, [
     trackData,
-    drivers,
     trackBounds,
-    userZoom,
-    userPan,
-    showTags,
-    showCorners,
-    showDRSZones,
-    showSectors,
-    hoveredDriver,
-    selectedDriverId,
     worldToCanvas,
     getPointAtDistance,
   ]);
+
+  // Wheel listener nativo com { passive: false } para suportar zoom sem warning no console e sem rolar a página
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      setUserZoom((prev) => Math.max(0.6, Math.min(4.5, prev * zoomFactor)));
+    };
+
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      canvas.removeEventListener("wheel", onWheel);
+    };
+  }, []);
 
   // Detector de Hover sobre pilotos
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -651,10 +691,10 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     const mouseY = e.clientY - rect.top;
 
     if (isPanning) {
-      setUserPan({
-        x: userPan.x + (e.clientX - startPan.x),
-        y: userPan.y + (e.clientY - startPan.y),
-      });
+      setUserPan((prev) => ({
+        x: prev.x + (e.clientX - startPan.x),
+        y: prev.y + (e.clientY - startPan.y),
+      }));
       setStartPan({ x: e.clientX, y: e.clientY });
       return;
     }
@@ -662,7 +702,6 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     setMousePos({ x: e.clientX, y: e.clientY });
 
     // Calcula se o mouse está sobre algum piloto
-    const dpr = window.devicePixelRatio || 1;
     const width = rect.width;
     const height = rect.height;
 
@@ -671,26 +710,29 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
     const availableH = Math.max(10, height - padding * 2);
     const baseScale = Math.min(availableW / trackBounds.width, availableH / trackBounds.height);
 
+    const currentZoom = userZoomRef.current;
+    const currentPan = userPanRef.current;
+
     const transform: ViewTransform = {
       scale: baseScale,
       offsetX: (width - trackBounds.width * baseScale) / 2,
       offsetY: (height - trackBounds.height * baseScale) / 2,
-      userScale: userZoom,
-      panX: userPan.x,
-      panY: userPan.y,
+      userScale: currentZoom,
+      panX: currentPan.x,
+      panY: currentPan.y,
     };
 
     const circuitLen = trackData.length_m || 4309;
     let foundDriver: EnrichedDriverState | null = null;
 
-    for (const d of drivers) {
+    for (const d of driversRef.current) {
       if (d.is_retired) continue;
       const dDist = animDistancesRef.current[d.driver_id] ?? d.distance_m;
       const pt = getPointAtDistance(dDist, trackData.points, circuitLen);
       const screenPos = worldToCanvas(pt.x, pt.y, width, height, transform);
 
       const dist = Math.hypot(mouseX - screenPos.x, mouseY - screenPos.y);
-      if (dist <= 16 * userZoom) {
+      if (dist <= 16 * currentZoom) {
         foundDriver = d;
         break;
       }
@@ -716,12 +758,6 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
 
   const handleMouseUp = () => {
     setIsPanning(false);
-  };
-
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
-    setUserZoom((prev) => Math.max(0.6, Math.min(4.5, prev * zoomFactor)));
   };
 
   const resetView = () => {
@@ -878,7 +914,7 @@ export const CircuitCanvas: React.FC<CircuitCanvasProps> = ({
           onMouseMove={handleMouseMove}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
-          onWheel={handleWheel}
+          onMouseLeave={handleMouseUp}
           className="w-full h-full block"
         />
 

@@ -38,6 +38,25 @@ export async function checkHealth(): Promise<{ status: string }> {
 }
 
 /**
+ * Lista os circuitos disponíveis com metadados básicos (GET /api/circuits)
+ */
+export async function listCircuits(): Promise<
+  Array<{
+    circuit_id: string;
+    length_m?: number;
+    points_count?: number;
+    meta?: Record<string, unknown>;
+  }>
+> {
+  const url = `${getApiBaseUrl()}/api/circuits`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Erro ao listar circuitos: HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
  * Criação de uma nova corrida (POST /api/races)
  */
 export async function createRace(
@@ -105,10 +124,9 @@ export async function getRaceResults(
 export async function getCircuitGeometry(
   circuitId: string
 ): Promise<CircuitGeometry> {
-  // Tenta carregar primeiro da API, depois fallback para o asset público local
   const urls = [
+    `${getApiBaseUrl()}/api/circuits/${circuitId}`,
     `${getApiBaseUrl()}/circuits/${circuitId}.json`,
-    `/circuits/${circuitId}.json`,
   ];
 
   for (const url of urls) {
@@ -131,9 +149,8 @@ export async function getCircuitGeometry(
 export async function getTrackMap(circuitId: string): Promise<TrackMapData> {
   const urls = [
     `${getApiBaseUrl()}/api/track-maps/${circuitId}`,
-    `/track_maps/${circuitId}.json`,
+    `${getApiBaseUrl()}/api/circuits/${circuitId}`,
     `${getApiBaseUrl()}/circuits/${circuitId}.json`,
-    `/circuits/${circuitId}.json`,
   ];
 
   for (const url of urls) {

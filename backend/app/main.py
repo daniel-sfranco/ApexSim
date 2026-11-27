@@ -1,12 +1,16 @@
 import json
 
-from fastapi import FastAPI, HTTPException, Request
+from typing import Annotated
+
+from fastapi import FastAPI, HTTPException, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api import health, races
 from app.config import CIRCUITS_DIR, TRACK_EDITOR_DIR, TRACK_MAPS_DIR
 from app.websocket import races as ws_races
+
+CIRCUIT_ID_REGEX = r"^[a-z0-9_]+$"
 
 app = FastAPI(
     title="ApexSim API",
@@ -50,7 +54,9 @@ async def list_circuits():
 
 
 @app.get("/api/circuits/{circuit_id}")
-async def get_circuit_geometry(circuit_id: str):
+async def get_circuit_geometry(
+    circuit_id: Annotated[str, Path(pattern=CIRCUIT_ID_REGEX)],
+):
     """Retorna a geometria simplificada do circuito (Contrato D3)."""
     f = CIRCUITS_DIR / f"{circuit_id}.json"
     if not f.exists():
@@ -59,7 +65,10 @@ async def get_circuit_geometry(circuit_id: str):
 
 
 @app.post("/api/track-maps/{circuit_id}")
-async def save_track_map(circuit_id: str, request: Request):
+async def save_track_map(
+    circuit_id: Annotated[str, Path(pattern=CIRCUIT_ID_REGEX)],
+    request: Request,
+):
     """Salva diretamente o mapa semântico anotado (Contrato D4) em track_maps/{circuito}.json."""
     dados = await request.json()
     if dados.get("circuit_id") != circuit_id:
@@ -72,7 +81,9 @@ async def save_track_map(circuit_id: str, request: Request):
 
 
 @app.get("/api/track-maps/{circuit_id}")
-async def get_track_map(circuit_id: str):
+async def get_track_map(
+    circuit_id: Annotated[str, Path(pattern=CIRCUIT_ID_REGEX)],
+):
     """Retorna o mapa semântico anotado caso já exista em track_maps/{circuito}.json."""
     destino = TRACK_MAPS_DIR / f"{circuit_id}.json"
     if not destino.exists():
