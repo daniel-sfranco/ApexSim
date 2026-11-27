@@ -70,7 +70,10 @@ def test_save_and_get_track_map_api():
             test_file.unlink()
 
 
-@pytest.mark.parametrize("invalid_id", ["../../etc/passwd", "MONZA", "monza.json", "a b", "interlagos/../test"])
+@pytest.mark.parametrize(
+    "invalid_id",
+    ["../../etc/passwd", "MONZA", "monza.json", "a b", "interlagos/../test"],
+)
 def test_circuit_id_validation_rejects_invalid_slugs(invalid_id: str):
     """circuit_id fora do padrão ^[a-z0-9_]+$ deve ser rejeitado para evitar path traversal."""
     res_geom = client.get(f"/api/circuits/{invalid_id}")
