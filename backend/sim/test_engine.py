@@ -428,9 +428,11 @@ def test_pit_stop_applies_track_map_time_loss(monkeypatch):
     engine.step_tick(delta_time=0.5)
 
     assert ver.pit_stops_made == 1
-    assert ver.pit_time_in_this_lap == pytest.approx(21.0)
+    # Base da pista (21 s) + desvio do pit crew + ruído da parada.
+    assert ver.pit_time_in_this_lap is not None
+    assert 20.0 <= ver.pit_time_in_this_lap <= 22.0
     # O tick consumiu 0.5 s do tempo parado no box.
-    assert ver.pit_time_remaining == pytest.approx(20.5)
+    assert ver.pit_time_remaining == pytest.approx(ver.pit_time_in_this_lap - 0.5)
     assert engine.pending_events[0]["event_type"] == "PIT_STOP"
 
 
@@ -629,8 +631,12 @@ def test_evaluate_pit_stops_feed_weather_and_rival_context(monkeypatch):
     for driver in (ver, nor, lec):
         driver.current_lap = 5
         driver.lap_distance_covered = 1000.0
+        driver.total_distance_covered = 1000.0
     ver.lap_distance_covered = 0.9 * 4000.0
-    nor.gap_to_ahead = 0.7
+    # Gap físico de 0,7 s entre VER e NOR (42 m a 60 m/s).
+    ver.base_velocity = 60.0
+    nor.total_distance_covered = 1000.0 - 0.7 * 60.0
+    lec.total_distance_covered = 1000.0 - 120.0
 
     capturado: dict[str, Any] = {}
 
@@ -649,7 +655,6 @@ def test_evaluate_pit_stops_feed_weather_and_rival_context(monkeypatch):
     assert race_state["red_flag"] is False
     assert driver_state["gap_to_car_behind"] == pytest.approx(0.7)
     assert driver_state["rival_behind_pitted"] is False
-
     # Rival parou na volta anterior: undercut ativo.
     engine._last_pit_lap["NOR"] = 4
     engine._evaluate_pit_stops()
@@ -877,3 +882,127 @@ def test_incidentes_usam_grip_combinado_de_pneu_e_clima(monkeypatch):
     assert grips_recebidos["VER"] < grips_recebidos["NOR"]
     assert grips_recebidos["VER"] <= 0.30
     assert grips_recebidos["NOR"] >= 0.80
+
+
+# ---------------------------------------------------------------------------
+# Estratégias dessincronizadas: perfis por piloto e gate de undercut
+# ---------------------------------------------------------------------------
+
+
+def _ativos_e_posicoes(state):  # noqa: ANN001
+    ativos = sorted(
+        (driver for driver in state.drivers.values() if not driver.is_retired),
+        key=lambda driver: driver.position,
+    )
+    return ativos, {driver.driver_id: idx for idx, driver in enumerate(ativos)}
+
+
+def test_engine_aplica_perfis_individuais_de_ritmo():
+    """Cada piloto sai da velocidade de referência com o próprio desvio."""
+    state = montar_grid_inicial(track_length=4000.0)
+    engine = RaceEngine(race_state=state, track_length=4000.0, base_lap_delay=0.01)
+
+    velocidades = {driver.driver_id: driver.base_velocity for driver in state.drivers.values()}
+    assert len(set(velocidades.values())) > 1
+    assert all(abs(v - 60.0) <= 0.5001 for v in velocidades.values())
+
+    # Mesma seed, mesmos perfis.
+    estado2 = montar_grid_inicial(track_length=4000.0)
+    outro = RaceEngine(race_state=estado2, track_length=4000.0, base_lap_delay=0.01)
+    assert outro.driver_profiles == engine.driver_profiles
+
+
+def test_undercut_exige_gap_realista_e_parada_na_volta_anterior():
+    """O gate rejeita rival colado, rival distante e parada antiga."""
+    state = montar_grid_inicial(grid=["VER", "NOR", "LEC"], track_length=4000.0)
+    engine = RaceEngine(race_state=state, track_length=4000.0, base_lap_delay=0.01)
+
+    ver = state.drivers["VER"]
+    nor = state.drivers["NOR"]
+    ver.current_lap = 20
+    nor.current_lap = 20
+    ver.tyre_age = 20
+    ver.base_velocity = 60.0
+    ver.total_distance_covered = 1000.0
+    ativos, posicoes = _ativos_e_posicoes(state)
+
+    # 1,0 s de gap e parada na volta anterior: reação permitida.
+    nor.total_distance_covered = 1000.0 - 60.0
+    engine._last_pit_lap["NOR"] = 19
+    assert engine._undercut_allowed(ver, ativos, posicoes) is True
+
+    # Rival colado (0,1 s) está disputando posição, não armando undercut.
+    engine._undercut_reaction_age.clear()
+    nor.total_distance_covered = 1000.0 - 6.0
+    assert engine._undercut_allowed(ver, ativos, posicoes) is False
+
+    # Rival distante (3,0 s) não é ameaça.
+    nor.total_distance_covered = 1000.0 - 180.0
+    assert engine._undercut_allowed(ver, ativos, posicoes) is False
+
+    # Parada de duas voltas atrás não configura mais undercut.
+    nor.total_distance_covered = 1000.0 - 60.0
+    engine._last_pit_lap["NOR"] = 18
+    assert engine._undercut_allowed(ver, ativos, posicoes) is False
+
+    # Rival ainda no box não libera a reação.
+    engine._last_pit_lap["NOR"] = 19
+    nor.pit_status = PitStatus.IN_PIT
+    assert engine._undercut_allowed(ver, ativos, posicoes) is False
+
+
+def test_undercut_limitado_a_uma_reacao_por_stint():
+    """O mesmo piloto não reage duas vezes com o mesmo jogo de pneus."""
+    state = montar_grid_inicial(grid=["VER", "NOR", "LEC"], track_length=4000.0)
+    engine = RaceEngine(race_state=state, track_length=4000.0, base_lap_delay=0.01)
+
+    ver = state.drivers["VER"]
+    nor = state.drivers["NOR"]
+    ver.current_lap = 20
+    nor.current_lap = 20
+    ver.tyre_age = 20
+    ver.base_velocity = 60.0
+    ver.total_distance_covered = 1000.0
+    nor.total_distance_covered = 1000.0 - 60.0
+    engine._last_pit_lap["NOR"] = 19
+    ativos, posicoes = _ativos_e_posicoes(state)
+
+    assert engine._undercut_allowed(ver, ativos, posicoes) is True
+    assert engine._undercut_allowed(ver, ativos, posicoes) is False
+
+    # Stint novo (pneu voltou a zero) libera uma nova reação.
+    ver.tyre_age = 0
+    assert engine._undercut_allowed(ver, ativos, posicoes) is True
+
+
+def test_paradas_nao_sincronizam_em_pista_verde():
+    """Em 58 voltas, as paradas verdes se espalham e não formam um pelotão único."""
+    state = montar_grid_inicial(track_length=4309.0)
+    state.total_laps = 58
+    engine = RaceEngine(
+        race_state=state,
+        track_map=TrackMap.load("interlagos"),
+        seed=42,
+        base_tick_delay=0.0,
+    )
+
+    paradas_por_volta: dict[int, int] = {}
+    status_por_volta: dict[int, str] = {}
+    for _ in range(58):
+        antes = {driver.driver_id: driver.pit_stops_made for driver in state.drivers.values()}
+        engine.step_lap()
+        status_por_volta[state.current_lap] = state.track_status.name
+        for driver in state.drivers.values():
+            if driver.pit_stops_made > antes[driver.driver_id]:
+                paradas_por_volta[driver.current_lap] = (
+                    paradas_por_volta.get(driver.current_lap, 0) + 1
+                )
+
+    verdes = {
+        lap: quantidade
+        for lap, quantidade in paradas_por_volta.items()
+        if status_por_volta.get(lap) == "GREEN"
+    }
+    assert len(verdes) >= 8
+    assert max(verdes.values()) <= 4
+    assert sum(verdes.values()) >= 10

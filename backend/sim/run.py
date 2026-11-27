@@ -46,6 +46,23 @@ GRID_SPACING_M = 8.0
 GRID_REFERENCE_VELOCITY_MS = 60.0
 GRID_GAP_S = GRID_SPACING_M / GRID_REFERENCE_VELOCITY_MS
 
+# Alocação padrão de pneus por faixa do grid, usada quando o setup não define o
+# composto de um piloto. Misturar os três slicks faz os stints iniciais serem
+# diferentes e evita que todas as paradas caiam na mesma volta.
+DEFAULT_TYRE_ALLOCATION: tuple[tuple[int, TyreCompound], ...] = (
+    (6, TyreCompound.SOFT),
+    (14, TyreCompound.MEDIUM),
+    (20, TyreCompound.HARD),
+)
+
+
+def _default_compound_for_position(grid_position: int) -> TyreCompound:
+    """Composto padrão para uma posição do grid (fallback MEDIUM)."""
+    for limite, composto in DEFAULT_TYRE_ALLOCATION:
+        if grid_position <= limite:
+            return composto
+    return TyreCompound.MEDIUM
+
 
 def montar_grid_inicial(
     grid: list[str] | None = None,
@@ -66,7 +83,8 @@ def montar_grid_inicial(
         grid: Códigos FIA na ordem de largada escolhida no setup. Quando
             omitido, usa o grid padrão de 20 pilotos.
         initial_tyres: Compostos iniciais por código (ex.: ``{"VER": "SOFT"}``).
-            Compostos ausentes ou desconhecidos caem no MEDIUM.
+            Compostos ausentes usam a alocação padrão por posição do grid;
+            compostos desconhecidos caem no MEDIUM.
         track_length: Extensão do circuito em metros, usada para posicionar o
             grid em relação à linha de chegada.
     """
@@ -84,7 +102,7 @@ def montar_grid_inicial(
 
     drivers = {}
     for grid_position, (driver_id, name, team) in enumerate(pilotos, start=1):
-        composto = TyreCompound.MEDIUM
+        composto = _default_compound_for_position(grid_position)
         if initial_tyres and driver_id in initial_tyres:
             try:
                 composto = TyreCompound[str(initial_tyres[driver_id]).strip().upper()]

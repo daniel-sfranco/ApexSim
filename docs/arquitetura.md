@@ -351,9 +351,25 @@ largada: inicia a contagem da volta 1 sem registrar `LapResult` nem envelhecer p
 
 No `tick()`, cobrir mais metros não basta para ultrapassar. Os carros ativos e fora do
 pit são ordenados por distância total e cada um tem o passo limitado a
-`MIN_CAR_GAP_M = 10.0` atrás do rival da frente; a ordem só muda pelo
+`MIN_CAR_GAP_M = 8.0` atrás do rival da frente; a ordem só muda pelo
 `sample_overtake()`, que também aplica `OVERTAKE_DEFENDER_COOLDOWN_S = 3.0` ao
 defensor. Carros no pit (faixa separada) e já finalizados não participam da corrente.
+
+#### Estratégia de pit stop e dessincronização
+
+A decisão de parar continua centralizada na heurística de `backend/strategy/heuristic.py`,
+que o motor **não altera**. Para evitar que o pelotão pare em bloco, o `RaceEngine`:
+
+- aplica um perfil determinístico por piloto (`sim/strategy_profile.py`, derivado de
+  `CRC32(seed, driver_id)`) com desvios de ritmo, gestão de pneu, pit crew e agressividade;
+- passa `pit_lane_loss_s` e `degradation_curve` já ajustados por piloto;
+- filtra a reação de undercut em `_undercut_allowed()`: gap físico entre `0.5 s` e `1.8 s`,
+  rival que concluiu a parada na volta anterior e no máximo uma reação por stint;
+- sorteia `DEFAULT_TYRE_ALLOCATION` (P1–P6 `SOFT`, P7–P14 `MEDIUM`, P15–P20 `HARD`)
+  quando o setup não define o composto inicial.
+
+O detalhamento do motor, das constantes e dos contratos está em
+[`backend/sim/README.md`](../backend/sim/README.md).
 
 ---
 

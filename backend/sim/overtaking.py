@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 # Probabilidade base de sucesso em UMA tentativa de ultrapassagem (uma travessia
 # de zona) com ritmo, gap, DRS e dificuldade neutros. O motor faz no máximo uma
 # tentativa por entrada em zona, então o valor já é o da travessia completa.
-OVERTAKE_BASE_ZONE_PROBABILITY = 0.014
+OVERTAKE_BASE_ZONE_PROBABILITY = 0.09
 
 # Teto da probabilidade acumulada em uma travessia de zona.
 OVERTAKE_MAX_ZONE_PROBABILITY = 0.90
@@ -55,7 +55,7 @@ OVERTAKE_MAX_ZONE_PROBABILITY = 0.90
 OVERTAKE_MAX_GAP_S = 0.8
 
 # Volta mínima (largada não conta como oportunidade de ultrapassagem).
-OVERTAKE_MIN_LAP = 2
+OVERTAKE_MIN_LAP = 0
 
 # Sensibilidade ao diferencial de ritmo (s/volta) e limites do multiplicador.
 OVERTAKE_PACE_EXPONENT = 1.2
