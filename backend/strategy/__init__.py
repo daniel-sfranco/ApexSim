@@ -1,5 +1,12 @@
-"""Módulo de heurística e tomada de decisão de estratégia de pit stop."""
+"""Módulo de heurística e otimização de estratégia de pit stop."""
 
 from .heuristic import PitDecision, PitStrategyHeuristic
+from .monte_carlo import MonteCarloPlan, MonteCarloStrategyOptimizer, StrategyCandidate
 
-__all__ = ["PitDecision", "PitStrategyHeuristic"]
+__all__ = [
+    "MonteCarloPlan",
+    "MonteCarloStrategyOptimizer",
+    "PitDecision",
+    "PitStrategyHeuristic",
+    "StrategyCandidate",
+]

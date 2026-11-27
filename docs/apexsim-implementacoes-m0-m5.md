@@ -114,11 +114,11 @@ Este documento centraliza todos os entregáveis e requisitos de código, arquite
   - [x] Testes unitários (`tests/test_strategy.py`) garantindo paradas realistas para todos os pilotos.
 
 ### M4 — Feature Complete (Semanas 11–13)
-- [ ] **Otimização por Monte Carlo (Degrau 2 — `backend/strategy/monte_carlo.py`)**:
-  - [ ] Simulação de $K$ cenários futuros sob incerteza para seleção do momento e composto ideais.
-  - [ ] Teste de sanidade (convergência com a heurística em cenários simples).
-  - [ ] Execução da simulação completa mantida abaixo de 30 segundos.
-  - [ ] Documentação técnica em `docs/estrategia.md`.
+- [x] **Otimização por Monte Carlo (Degrau 2 — `backend/strategy/monte_carlo.py`)**:
+  - [x] Simulação de $K$ cenários futuros sob incerteza para seleção do momento e composto ideais.
+  - [x] Teste de sanidade (convergência com a heurística em cenários simples).
+  - [x] Execução da simulação completa mantida abaixo de 30 segundos.
+  - [x] Documentação técnica em `docs/estrategia.md`.
 
 ### M5 — Entrega (Semanas 14–15)
 - [ ] Consolidação do relatório final, revisão geral do repositório e condução da demo do editor.
