@@ -8,6 +8,8 @@ Reexporta `RaceEngine` e provê o utilitário `run_realtime_loop`.
 
 from __future__ import annotations
 
+from strategy.heuristic import PitStrategyHeuristic
+
 from .engine import BroadcastCallback, RaceEngine
 from .run import montar_grid_inicial
 from .state import RaceState
@@ -26,6 +28,7 @@ async def run_realtime_loop(
     base_lap_delay: float = 2.0,
     broadcast_fn: BroadcastCallback | None = None,
     track_map: TrackMap | None = None,
+    pit_heuristic: PitStrategyHeuristic | None = None,
 ) -> RaceEngine:
     """Instancia e executa o motor de corrida em segundo plano ou até o fim."""
     if race_state is None:
@@ -44,6 +47,7 @@ async def run_realtime_loop(
         base_lap_delay=base_lap_delay,
         broadcast_fn=broadcast_fn,
         track_map=track_map,
+        pit_heuristic=pit_heuristic,
     )
     await engine.run()
 

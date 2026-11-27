@@ -52,6 +52,7 @@ from strategy.config import (
     UNDERCUT_REACTION_WINDOW_LAPS,
 )
 from strategy.heuristic import PitStrategyHeuristic
+from strategy.monte_carlo import MonteCarloStrategyOptimizer
 
 BroadcastCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
 
@@ -106,6 +107,7 @@ class RaceEngine:
         on_finished: FinishedCallback | None = None,
         dynamic_weather: bool = False,
         weather_transition_probs: dict[WeatherState, dict[WeatherState, float]] | None = None,
+        pit_heuristic: PitStrategyHeuristic | None = None,
     ) -> None:
         """Inicializa o motor da corrida.
 
@@ -131,6 +133,10 @@ class RaceEngine:
                 clima fixo escolhido na configuração da corrida/calibração.
             weather_transition_probs: Matriz de transição opcional para o simulador
                 climático (usa `DEFAULT_TRANSITION_PROBABILITIES` se omitida).
+            pit_heuristic: Estratégia de pit stop injetada. Quando omitida, usa
+                `MonteCarloStrategyOptimizer(seed=seed, dynamic_weather=dynamic_weather)`.
+                Aceita qualquer objeto compatível com a interface `evaluate_driver(...)`,
+                como `PitStrategyHeuristic`.
         """
         self.state = race_state
         self.track_length = float(track_length)
@@ -165,7 +171,14 @@ class RaceEngine:
         self._pause_event.set()
 
         self.pending_events: list[dict[str, Any]] = []
-        self.pit_heuristic = PitStrategyHeuristic()
+        self.pit_heuristic: PitStrategyHeuristic = (
+            pit_heuristic
+            if pit_heuristic is not None
+            else MonteCarloStrategyOptimizer(
+                seed=self.seed,
+                dynamic_weather=self.dynamic_weather,
+            )
+        )
 
         # Valores de pit lane vindos do Contrato D4 (com fallback seguro).
         if self.track_map is not None:
@@ -195,6 +208,9 @@ class RaceEngine:
 
         # Volta da última parada de cada piloto (contexto de undercut da heurística).
         self._last_pit_lap: dict[str, int] = {}
+        # Chave do último contexto estratégico avaliado por piloto, evitando
+        # reexecutar rollouts de Monte Carlo em todo tick dentro da mesma janela.
+        self._last_pit_eval_key: dict[str, tuple[Any, ...]] = {}
 
         # Ganchos de fim de volta / fim de corrida (persistência, fora do sim/).
         self.on_lap_closed = on_lap_closed
@@ -502,12 +518,8 @@ class RaceEngine:
             if not (na_janela_de_pit and driver.current_lap >= 2):
                 continue
 
-            profile = self.driver_profiles.get(driver.driver_id)
-            pit_loss_for_decision = self.pit_lane_loss_s + (
-                profile.pit_crew_delta_s if profile else 0.0
-            )
             decision = self.pit_heuristic.evaluate_driver(
-                driver_state=self._strategy_driver_state(driver, ativos, posicoes),
+                driver_state=driver_adapter,
                 race_state=race_adapter,
                 pit_lane_loss_s=pit_loss_for_decision,
                 degradation_curve=self._driver_degradation.get(
@@ -562,6 +574,9 @@ class RaceEngine:
             # VSC chega como YELLOW (Contrato D2); só o SC pleno libera a parada barata.
             "safety_car": self.state.track_status == TrackStatus.SAFETY_CAR,
             "red_flag": self.state.track_status == TrackStatus.RED,
+            # Informa aos otimizadores (ex.: Monte Carlo) se o clima desta corrida
+            # evolui dinamicamente.
+            "dynamic_weather": self.dynamic_weather,
         }
 
     def _strategy_driver_state(

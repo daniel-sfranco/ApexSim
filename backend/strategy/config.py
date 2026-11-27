@@ -52,3 +52,16 @@ AGGRESSION_JITTER: float = 0.10
 UNDERCUT_MIN_GAP_S: float = 0.5
 UNDERCUT_GAP_THRESHOLD_S: float = 1.8
 UNDERCUT_REACTION_WINDOW_LAPS: int = 1
+
+# ---------------------------------------------------------------------------
+# Otimização por Monte Carlo (Degrau 2 — M4)
+# ---------------------------------------------------------------------------
+MC_DEFAULT_SCENARIOS: int = 64  # Número padrão K de rollouts estocásticos por avaliação
+MC_HORIZON_LAPS: int = 15  # Horizonte de decisão comparável ao Degrau 1 (voltas)
+# Probabilidade base de Safety Car/VSC por volta futura (~1,0 SC + ~0,95 VSC em 58 voltas)
+MC_SC_PROB_PER_LAP: float = 0.035
+# Desvio-padrão relativo na taxa de degradação por cenário (alinhado a curvas_degradacao.json)
+MC_DEG_NOISE_STD: float = 0.10
+MC_PIT_DURATION_STD: float = 0.35  # Incerteza (s) no tempo estacionário de troca de pneus
+# Filtro rápido para evitar rollouts desnecessários em pneus recém-trocados em bandeira verde
+MC_MIN_TYRE_AGE_FOR_ROLLOUT: int = 5
