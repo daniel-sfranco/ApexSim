@@ -97,6 +97,7 @@ class RaceEngine:
         on_finished: FinishedCallback | None = None,
         dynamic_weather: bool = False,
         weather_transition_probs: dict[WeatherState, dict[WeatherState, float]] | None = None,
+        pit_heuristic: PitStrategyHeuristic | None = None,
     ) -> None:
         """Inicializa o motor da corrida.
 
@@ -122,6 +123,10 @@ class RaceEngine:
                 clima fixo escolhido na configuração da corrida/calibração.
             weather_transition_probs: Matriz de transição opcional para o simulador
                 climático (usa `DEFAULT_TRANSITION_PROBABILITIES` se omitida).
+            pit_heuristic: Estratégia de pit stop injetada. Quando omitida, usa
+                `PitStrategyHeuristic()` com os padrões. Aceita qualquer objeto
+                compatível com a interface `evaluate_driver(...)`, como
+                `MonteCarloStrategyOptimizer`.
         """
         self.state = race_state
         self.track_length = float(track_length)
@@ -156,7 +161,7 @@ class RaceEngine:
         self._pause_event.set()
 
         self.pending_events: list[dict[str, Any]] = []
-        self.pit_heuristic = PitStrategyHeuristic()
+        self.pit_heuristic = pit_heuristic or PitStrategyHeuristic()
 
         # Valores de pit lane vindos do Contrato D4 (com fallback seguro).
         if self.track_map is not None:
@@ -428,6 +433,9 @@ class RaceEngine:
             # VSC chega como YELLOW (Contrato D2); só o SC pleno libera a parada barata.
             "safety_car": self.state.track_status == TrackStatus.SAFETY_CAR,
             "red_flag": self.state.track_status == TrackStatus.RED,
+            # Permite que otimizadores (ex.: Monte Carlo) usem a mesma configuração
+            # climática do motor quando o chamador não sobrescrever explicitamente.
+            "dynamic_weather": self.dynamic_weather,
         }
 
     def _strategy_driver_state(
